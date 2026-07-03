@@ -1,0 +1,76 @@
+{
+  "items": [
+    {
+      "id": "a8ead8ef-2720-4143-943f-f712cb755771",
+      "title": "3-værelses lejhlighed i Valby ",
+      "classification": "Residential",
+      "state": "Available",
+      "address": {
+        "street": "Valby Langgade 36, 5. tv",
+        "zipCode": "2500",
+        "city": "Valby"
+      },
+      "size": {
+        "value": 86.0
+      },
+      "rooms": 3,
+      "monthlyRent": {
+        "value": 17200.0
+      }
+    },
+    {
+      "id": "0e2128d9-910b-49f2-bfea-602679e9ed8d",
+      "title": "Charmerende butik på Frederiksberg",
+      "classification": "Business",
+      "state": "Available",
+      "address": {
+        "street": "Godthåbsvej 62B, parterre",
+        "zipCode": "2000",
+        "city": "Frederiksberg"
+      },
+      "size": {
+        "value": 129.0
+      },
+      "rooms": 1,
+      "monthlyRent": {
+        "value": 23095.0
+      }
+    },
+    {
+      "id": "274fb4bb-60f9-4b9f-8128-8ae528af90c9",
+      "title": "Lækker lejlighed med en stor tagterrasse og kun 200 m. fra Søerne",
+      "classification": "Residential",
+      "state": "Reserved",
+      "address": {
+        "street": "Fælledvej 23, 5. th",
+        "zipCode": "2200",
+        "city": "København N"
+      },
+      "size": {
+        "value": 171.0
+      },
+      "rooms": 4,
+      "monthlyRent": {
+        "value": 31350.0
+      }
+    },
+    {
+      "id": "140b3307-a27a-48f2-8a90-70d6205daa1e",
+      "title": "Fantastisk penthouselejlighed lige ved Søerne",
+      "classification": "Residential",
+      "state": "Available",
+      "address": {
+        "street": "Sortedam Dossering 45, 5. tv",
+        "zipCode": "2200",
+        "city": "København N"
+      },
+      "size": {
+        "value": 114.0
+      },
+      "rooms": 3,
+      "monthlyRent": {
+        "value": 25650.0
+      }
+    }
+  ]
+}

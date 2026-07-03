@@ -1,0 +1,2 @@
+event: data
+data:{"searchResponse": {"items": [{"id": "f71591e20715809baadd8e73604591e3", "name": "1-værelses lejlighed på Frederiksberg", "location": {"formatted": "Nordre Fasanvej 119, 3. 16, 2000 Frederiksberg"}, "numberOfRooms": 1, "floorSize": 29, "price": {"amount": 6929}}, {"id": "7db7f670e2f245c590f59e867e3723b4", "name": "Charmende 3-værelses lejlighed I Ballerup ", "location": {"formatted": "Fjerkløvervej 11, 2. 2, 2750 Ballerup"}, "numberOfRooms": 3, "floorSize": 64, "price": {"amount": 12112}}]}}
