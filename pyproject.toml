@@ -1,0 +1,30 @@
+[project]
+name = "boligvagten"
+version = "0.1.0"
+description = "Get to Danish rental listings first — multi-site apartment watcher with instant phone alerts"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Armin Pasalic" }]
+keywords = ["denmark", "copenhagen", "apartments", "renting", "bolig", "scraper", "ntfy"]
+
+# The monitor itself is pure standard library — clone and run.
+dependencies = []
+
+[project.optional-dependencies]
+# CEJ auto-contact form filler (also run: playwright install chromium)
+contact = ["playwright"]
+dev = ["pytest", "ruff"]
+
+[project.urls]
+Repository = "https://github.com/arminpasalic/boligvagten"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

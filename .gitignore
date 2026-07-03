@@ -1,0 +1,17 @@
+# Personal configuration — created from config.example.py on first run.
+# Contains your contact details and ntfy topic. NEVER commit it.
+config.py
+
+# Runtime state and artifacts
+seen_listings.json
+*.png
+
+# OS / editor / tooling junk
+.DS_Store
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
