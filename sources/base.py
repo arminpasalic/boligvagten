@@ -1,4 +1,6 @@
 """Shared plumbing for listing sources: the Listing model and HTTP/HTML helpers."""
+from __future__ import annotations  # keeps `int | None` working on Python 3.9
+
 import html as htmllib
 import re
 import urllib.request
