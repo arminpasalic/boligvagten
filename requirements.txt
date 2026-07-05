@@ -1,0 +1,11 @@
+# boligvagten's monitor runs on the Python standard library alone —
+# there is nothing to install. `python3 monitor.py` just works.
+#
+# Optional feature: the CEJ auto-contact form filler uses Playwright
+# (no Selenium anywhere). To enable it, uncomment the line below and
+# afterwards run:  playwright install chromium
+#
+# playwright
+#
+# Contributors: test/lint tooling lives in pyproject.toml extras —
+#   pip install -e ".[dev]"     (pytest + ruff)

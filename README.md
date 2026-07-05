@@ -43,8 +43,10 @@ cd boligvagten
 python3 monitor.py
 ```
 
-The first run creates your personal `config.py`, generates a private
-notification channel, and prints exactly what to do:
+Yes, that's the whole install — no `pip install` step
+([requirements.txt](requirements.txt) exists to say exactly that). The first
+run creates your personal `config.py`, generates a private notification
+channel, and prints exactly what to do:
 
 ```
 ================================================================
