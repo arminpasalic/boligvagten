@@ -50,6 +50,44 @@ def test_meta_line_sale_formatting():
     assert monitor.meta_line(bare) == "3r, 86m², 2.500.000 DKK"
 
 
+def test_notify_title_splits_markets():
+    rent, sale = _listing(), _listing(deal="sale")
+    assert monitor.notify_title([rent]) == "1 ny lejebolig"
+    assert monitor.notify_title([rent, rent]) == "2 nye lejeboliger"
+    assert monitor.notify_title([sale]) == "1 ny bolig til salg"
+    assert monitor.notify_title([rent, rent, sale]) == "2 nye lejeboliger, 1 til salg"
+
+
+def test_check_once_deep_filters_new_listings(tmp_path, monkeypatch):
+    """description_keywords gates the alert but never the seen-state."""
+    import types
+
+    cfg = types.SimpleNamespace(
+        FILTERS={"description_keywords": ["altan"]}, SOURCES={},
+    )
+    monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
+    notified = []
+    monkeypatch.setattr(monitor, "notify_new", lambda items, _cfg: notified.append(items))
+
+    batches = [
+        [_listing(id="x:base", description="baseline")],
+        [_listing(id="x:base", description="baseline"),
+         _listing(id="x:plain", description="ingen udenomsplads")],
+        [_listing(id="x:base", description="baseline"),
+         _listing(id="x:plain", description="ingen udenomsplads"),
+         _listing(id="x:hit", description="skøn altan mod vest")],
+    ]
+    monkeypatch.setattr(monitor, "fetch_enabled", lambda _cfg: (batches.pop(0), 1))
+
+    assert monitor.check_once(cfg) == 1   # baseline run — no alert
+    assert monitor.check_once(cfg) == 1   # new but keyword-less — silenced
+    assert notified == []
+    assert monitor.check_once(cfg) == 1   # keyword match — alert fires
+    assert [it.id for it in notified[0]] == ["x:hit"]
+    # The silenced listing is still remembered — it must never re-alert.
+    assert "x:plain" in monitor.load_seen()
+
+
 # ---------------------------------------------------------------- registry
 
 def test_registry_enabled_selection():

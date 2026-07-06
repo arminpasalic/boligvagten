@@ -44,6 +44,11 @@ def strip_html(text):
     return re.sub(r"\s+", " ", htmllib.unescape(re.sub(r"<[^>]+>", " ", text))).strip()
 
 
+def fetch_description(listing):
+    """Visible text of the listing's own page — for description_keywords filtering."""
+    return strip_html(http_get(listing.url))
+
+
 def source_urls(conf):
     """A source config may give a single `url` or a list of `urls` (e.g. several cities)."""
     if conf.get("urls"):

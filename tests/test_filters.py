@@ -1,6 +1,7 @@
 """Filter behavior: bounds, keyword excludes, None-passthrough, layering."""
 from test_parsers import load
 
+from boligvagten import filters as filters_mod
 from boligvagten.filters import apply, passes
 from boligvagten.sources import cej
 from boligvagten.sources.base import Listing
@@ -83,6 +84,74 @@ def test_global_and_per_source_filters_stack():
     ]
     kept = apply(items, global_f, source_f)
     assert [it.id for it in kept] == ["x:ok"]
+
+
+# ---------------------------------------------------------------- deep filter
+
+def test_deep_apply_noop_without_description_keywords():
+    items = [mk()]
+    assert filters_mod.deep_apply(items, {"max_price_dkk": 1}, {}) == items
+
+
+def test_deep_apply_matches_inline_descriptions_without_fetching():
+    def forbidden(_):
+        raise AssertionError("must not fetch when description is inline")
+
+    items = [
+        mk(id="x:altan", description="Stor stue og skøn ALTAN mod vest."),
+        mk(id="x:plain", description="Kælderlejlighed uden udenomsplads."),
+    ]
+    kept = filters_mod.deep_apply(
+        items, {"description_keywords": ["altan", "terrasse"]}, {}, fetcher=forbidden
+    )
+    assert [it.id for it in kept] == ["x:altan"]
+
+
+def test_deep_apply_fetches_lazily_and_caches_on_listing():
+    calls = []
+
+    def fetcher(it):
+        calls.append(it.id)
+        return "Lejlighed med badekar og altan."
+
+    items = [mk(id="x:1")]
+    kept = filters_mod.deep_apply(items, {"description_keywords": ["badekar"]}, {},
+                                  fetcher=fetcher)
+    assert [it.id for it in kept] == ["x:1"]
+    assert calls == ["x:1"]
+    assert "badekar" in items[0].description  # cached for later filter layers
+
+
+def test_deep_apply_fails_open_on_fetch_error_and_budget():
+    def broken(_):
+        raise OSError("timeout")
+
+    items = [mk(id="x:err")]
+    kept = filters_mod.deep_apply(items, {"description_keywords": ["altan"]}, {},
+                                  fetcher=broken)
+    assert kept == items  # unknowable → keep, like the numeric bounds
+
+    calls = []
+
+    def counting(it):
+        calls.append(it.id)
+        return "no match here"
+
+    many = [mk(id=f"x:{i}") for i in range(5)]
+    kept = filters_mod.deep_apply(many, {"description_keywords": ["altan"]}, {},
+                                  fetcher=counting, max_fetches=2)
+    # Two fetched (and dropped: description known, no match); three kept unfetched.
+    assert len(calls) == 2
+    assert [it.id for it in kept] == ["x:2", "x:3", "x:4"]
+
+
+def test_deep_apply_honors_per_source_filters():
+    items = [
+        mk(id="a:1", source="a", description="med altan"),
+        mk(id="b:1", source="b", description="med altan"),
+    ]
+    kept = filters_mod.deep_apply(items, None, {"b": {"description_keywords": ["gård"]}})
+    assert [it.id for it in kept] == ["a:1"]
 
 
 def test_none_active_detects_unfiltered_setups():

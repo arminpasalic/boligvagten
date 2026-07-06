@@ -123,6 +123,19 @@ def meta_line(it):
     return f"{rooms}r, {size}m², {price}"
 
 
+def notify_title(new_items):
+    """Push title with the markets split: "2 nye lejeboliger, 1 til salg"."""
+    n_rent = sum(1 for it in new_items if it.deal != "sale")
+    n_sale = len(new_items) - n_rent
+    parts = []
+    if n_rent:
+        parts.append("1 ny lejebolig" if n_rent == 1 else f"{n_rent} nye lejeboliger")
+    if n_sale:
+        parts.append(f"{n_sale} til salg" if n_rent else
+                     ("1 ny bolig til salg" if n_sale == 1 else f"{n_sale} nye boliger til salg"))
+    return ", ".join(parts)
+
+
 def notify_new(new_items, cfg):
     lines = [f"{len(new_items)} new listing(s):"]
     for it in new_items:
@@ -131,10 +144,12 @@ def notify_new(new_items, cfg):
     message = "\n".join(lines)
     print(f"\n[{datetime.now().isoformat(timespec='seconds')}] {message}\n", flush=True)
 
-    title = f"{len(new_items)} new apartment(s)"
+    title = notify_title(new_items)
+    tags = ",".join(sorted({"moneybag" if it.deal == "sale" else "house" for it in new_items}))
     if getattr(cfg, "MACOS_NOTIFICATION", True):
         notify.send_macos(title, f"{len(new_items)} new. First: {new_items[0].address}")
-    notify.send_ntfy(getattr(cfg, "NTFY", {}), title, message, click_url=new_items[0].url)
+    notify.send_ntfy(getattr(cfg, "NTFY", {}), title, message,
+                     click_url=new_items[0].url, tags=tags)
     run_actions(new_items, cfg)
 
 
@@ -172,6 +187,11 @@ def fetch_enabled(cfg):
     return all_items, ok_count
 
 
+def per_source_filters(cfg):
+    return {mod.KEY: conf.get("filters") or {}
+            for mod, conf in sources.enabled(getattr(cfg, "SOURCES", {}))}
+
+
 def check_once(cfg):
     all_items, ok_count = fetch_enabled(cfg)
     if ok_count == 0:
@@ -190,7 +210,14 @@ def check_once(cfg):
     )
 
     if new_ids and seen:
-        notify_new([current[i] for i in new_ids], cfg)
+        # description_keywords runs here — only new listings, so a lazy page
+        # fetch per listing stays cheap. Dropped ones still land in "seen".
+        fresh = filters.deep_apply(
+            [current[i] for i in new_ids],
+            getattr(cfg, "FILTERS", None), per_source_filters(cfg),
+        )
+        if fresh:
+            notify_new(fresh, cfg)
     elif new_ids and not seen:
         print("First run — recording current listings as baseline (no alerts).", flush=True)
 
@@ -204,6 +231,7 @@ def check_once(cfg):
 def list_once(cfg):
     """Fetch everything now, apply filters, print a table — a one-shot search."""
     rows, _ = fetch_enabled(cfg)
+    rows = filters.deep_apply(rows, getattr(cfg, "FILTERS", None), per_source_filters(cfg))
     # Rentals first (cheapest up), then for-sale (cash prices would dwarf rents).
     rows.sort(key=lambda it: (it.deal != "rent", it.price_dkk is None, it.price_dkk or 0))
     if not rows:

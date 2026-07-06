@@ -41,6 +41,11 @@ FILTERS = {
     # source provides one):
     "exclude_keywords": [],         # e.g. ["studiebolig", "delevenlig", "ballerup"]
     "include_keywords": [],         # keep only matches, e.g. ["altan", "terrasse"]
+    # Like include_keywords, but searched in the listing's FULL description.
+    # Boligsiden delivers descriptions for free; for rental sites the
+    # listing page is fetched once per NEW listing (never for already-seen
+    # ones), so keep this for must-haves like ["altan"] or ["badekar"].
+    "description_keywords": [],
 }
 
 # ---------------------------------------------------------------------------
