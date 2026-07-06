@@ -23,6 +23,33 @@ def test_legacy_state_file_is_accepted(tmp_path, monkeypatch):
     assert monitor.load_seen() == {"bp:123", "kereby:x"}
 
 
+# ---------------------------------------------------------------- formatting
+
+def _listing(**kw):
+    from boligvagten.sources.base import Listing
+    base = dict(source="x", id="x:1", name="n", address="Gade 1", rooms=3,
+                size_m2=86, price_dkk=17200, url="https://x.dk/1")
+    base.update(kw)
+    return Listing(**base)
+
+
+def test_meta_line_rent_formatting():
+    assert monitor.meta_line(_listing()) == "3r, 86m², 17.200 DKK/md"
+    assert monitor.meta_line(
+        _listing(rooms=None, size_m2=None, price_dkk=None)
+    ) == "?r, ?m², ? DKK/md"
+
+
+def test_meta_line_sale_formatting():
+    it = _listing(deal="sale", price_dkk=3_975_000, monthly_fee_dkk=3645, year_built=1936)
+    assert monitor.meta_line(it) == (
+        "3r, 86m², 3.975.000 DKK (ejerudgift 3.645 kr./md, byggeår 1936)"
+    )
+    # Extras are dropped when unknown, not printed as '?'.
+    bare = _listing(deal="sale", price_dkk=2_500_000)
+    assert monitor.meta_line(bare) == "3r, 86m², 2.500.000 DKK"
+
+
 # ---------------------------------------------------------------- registry
 
 def test_registry_enabled_selection():

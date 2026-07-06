@@ -11,7 +11,7 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 
 @dataclass
 class Listing:
-    """One rental listing, normalized across all sources.
+    """One listing, normalized across all sources — rentals and for-sale alike.
 
     Unknown values are None — filters let None pass rather than dropping
     a listing we can't fully parse.
@@ -23,8 +23,14 @@ class Listing:
     address: str           # street + area, best effort ("?" if unknown)
     rooms: int | None
     size_m2: int | None
-    price_dkk: int | None  # monthly rent
+    price_dkk: int | None  # monthly rent — or cash price when deal == "sale"
     url: str               # direct link to the listing
+
+    # Defaulted fields — rental sources can ignore everything below.
+    deal: str = "rent"                  # "rent" | "sale"
+    monthly_fee_dkk: int | None = None  # ejerudgift (sale listings)
+    year_built: int | None = None
+    description: str | None = None      # long free text when the source has it inline
 
 
 def http_get(url, timeout=30):

@@ -25,13 +25,22 @@ OFFLINE_MAX_BACKOFF = 600
 # ---------------------------------------------------------------------------
 # All keys optional (None/empty = off). Listings with unknown values pass the
 # numeric bounds: better one alert too many than a silently missed apartment.
+# Tip: price bounds apply to whatever the source's price is — monthly rent
+# for rental sources, cash price for for-sale sources. Mixing both markets?
+# Put price bounds in each source's own "filters" dict instead of here.
 FILTERS = {
-    "max_price_dkk": None,     # e.g. 14000
-    "min_price_dkk": None,     # e.g. 4000 — weeds out too-good-to-be-true ads
-    "min_rooms": None,         # e.g. 2
-    "min_size_m2": None,       # e.g. 50
-    # Case-insensitive match on name + address:
-    "exclude_keywords": [],    # e.g. ["studiebolig", "delevenlig", "ballerup"]
+    "max_price_dkk": None,          # e.g. 14000
+    "min_price_dkk": None,          # e.g. 4000 — weeds out too-good-to-be-true ads
+    "min_rooms": None,              # e.g. 2
+    "max_rooms": None,              # e.g. 4
+    "min_size_m2": None,            # e.g. 50
+    "max_size_m2": None,            # e.g. 120
+    "min_monthly_fee_dkk": None,    # ejerudgift bounds — for-sale listings only
+    "max_monthly_fee_dkk": None,    # e.g. 5000
+    # Case-insensitive match on name + address (+ description when the
+    # source provides one):
+    "exclude_keywords": [],         # e.g. ["studiebolig", "delevenlig", "ballerup"]
+    "include_keywords": [],         # keep only matches, e.g. ["altan", "terrasse"]
 }
 
 # ---------------------------------------------------------------------------

@@ -100,13 +100,33 @@ def save_seen(ids):
 # ---------- New-listing handling ----------
 
 
+def _kr(n):
+    """Danish thousands separator: 3975000 → 3.975.000."""
+    return f"{n:,}".replace(",", ".")
+
+
+def meta_line(it):
+    """rooms/size/price summary, aware of rent vs. for-sale listings."""
+    rooms = it.rooms if it.rooms is not None else "?"
+    size = it.size_m2 if it.size_m2 is not None else "?"
+    if it.deal == "sale":
+        price = f"{_kr(it.price_dkk)} DKK" if it.price_dkk is not None else "? DKK"
+        extras = []
+        if it.monthly_fee_dkk is not None:
+            extras.append(f"ejerudgift {_kr(it.monthly_fee_dkk)} kr./md")
+        if it.year_built is not None:
+            extras.append(f"byggeår {it.year_built}")
+        if extras:
+            price += f" ({', '.join(extras)})"
+    else:
+        price = f"{_kr(it.price_dkk)} DKK/md" if it.price_dkk is not None else "? DKK/md"
+    return f"{rooms}r, {size}m², {price}"
+
+
 def notify_new(new_items, cfg):
-    lines = [f"{len(new_items)} new apartment listing(s):"]
+    lines = [f"{len(new_items)} new listing(s):"]
     for it in new_items:
-        lines.append(
-            f"  • [{it.source}] {it.address} — "
-            f"{it.rooms}r, {it.size_m2}m², {it.price_dkk} DKK/mo"
-        )
+        lines.append(f"  • [{it.source}] {it.address} — {meta_line(it)}")
         lines.append(f"    {it.url}")
     message = "\n".join(lines)
     print(f"\n[{datetime.now().isoformat(timespec='seconds')}] {message}\n", flush=True)
@@ -184,15 +204,21 @@ def check_once(cfg):
 def list_once(cfg):
     """Fetch everything now, apply filters, print a table — a one-shot search."""
     rows, _ = fetch_enabled(cfg)
-    rows.sort(key=lambda it: (it.price_dkk is None, it.price_dkk or 0))
+    # Rentals first (cheapest up), then for-sale (cash prices would dwarf rents).
+    rows.sort(key=lambda it: (it.deal != "rent", it.price_dkk is None, it.price_dkk or 0))
     if not rows:
         print("No listings matched your sources + filters.")
         return
     print()
-    print(f"{'SOURCE':<14}{'PRICE/MO':>10}  {'ROOMS':>5}  {'m²':>4}  ADDRESS")
+    print(f"{'SOURCE':<14}{'PRICE':>13}  {'ROOMS':>5}  {'m²':>4}  ADDRESS")
     for it in rows:
-        price = f"{it.price_dkk:,} kr".replace(",", ".") if it.price_dkk else "?"
-        meta = f"{it.source:<14}{price:>10}  {it.rooms or '?':>5}  {it.size_m2 or '?':>4}"
+        if it.price_dkk is None:
+            price = "?"
+        elif it.deal == "sale":
+            price = _kr(it.price_dkk)
+        else:
+            price = f"{_kr(it.price_dkk)}/md"
+        meta = f"{it.source:<14}{price:>13}  {it.rooms or '?':>5}  {it.size_m2 or '?':>4}"
         print(f"{meta}  {it.address}")
         print(f"{' ' * len(meta)}  {it.url}")
     print(f"\n{len(rows)} listing(s) right now.")
@@ -232,6 +258,13 @@ def run_loop(cfg, once=False):
         f"Sources: {', '.join(enabled_labels) or 'NONE ENABLED'}. State: {STATE_FILE}",
         flush=True,
     )
+    if filters.none_active(getattr(cfg, "FILTERS", None), getattr(cfg, "SOURCES", {})):
+        print(
+            "[note] No filters configured — every listing your source URLs return will "
+            "alert. Fine if the URLs already encode your search; otherwise see FILTERS "
+            "in config.py.",
+            flush=True,
+        )
     offline_streak = 0
     while True:
         got_any = False
