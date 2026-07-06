@@ -12,9 +12,10 @@ Requires Playwright (the only non-stdlib dependency in this project):
     pip install playwright && playwright install chromium
 """
 import re
-from pathlib import Path
 
-SCREENSHOT = Path(__file__).parent / "cej_phase3.png"
+from . import paths
+
+SCREENSHOT = paths.state_dir() / "cej_phase3.png"
 
 
 def contact(listing_url, cc):

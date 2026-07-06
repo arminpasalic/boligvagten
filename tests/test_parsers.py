@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from sources import boligportal, cej, cityapartment, kereby
-from sources.base import Listing
+from boligvagten.sources import boligportal, cej, cityapartment, kereby
+from boligvagten.sources.base import Listing
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

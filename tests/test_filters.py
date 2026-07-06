@@ -1,9 +1,9 @@
 """Filter behavior: bounds, keyword excludes, None-passthrough, layering."""
 from test_parsers import load
 
-from filters import apply, passes
-from sources import cej
-from sources.base import Listing
+from boligvagten.filters import apply, passes
+from boligvagten.sources import cej
+from boligvagten.sources.base import Listing
 
 
 def mk(**kw):

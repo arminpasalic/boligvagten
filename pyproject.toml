@@ -1,12 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "boligvagten"
-version = "0.1.0"
-description = "Get to Danish rental listings first — multi-site apartment watcher with instant phone alerts"
+dynamic = ["version"]
+description = "Danish housing watcher — rentals and for-sale listings, with instant phone alerts"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Armin Pasalic" }]
-keywords = ["denmark", "copenhagen", "apartments", "renting", "bolig", "scraper", "ntfy"]
+keywords = [
+    "denmark", "copenhagen", "apartments", "renting", "bolig", "boligsiden",
+    "til-salg", "housing", "scraper", "ntfy",
+]
 
 # The monitor itself is pure standard library — clone and run.
 dependencies = []
@@ -14,10 +21,26 @@ dependencies = []
 [project.optional-dependencies]
 # CEJ auto-contact form filler (also run: playwright install chromium)
 contact = ["playwright"]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "pytest-cov", "ruff"]
+
+[project.scripts]
+boligvagten = "boligvagten.monitor:main"
 
 [project.urls]
 Repository = "https://github.com/arminpasalic/boligvagten"
+Changelog = "https://github.com/arminpasalic/boligvagten/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "boligvagten/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["boligvagten"]
+
+# Ship the commented config template inside the wheel so installed runs
+# (pipx/uvx) can bootstrap ~/.config/boligvagten/config.py; the file itself
+# stays at the repo root where README links to it.
+[tool.hatch.build.targets.wheel.force-include]
+"config.example.py" = "boligvagten/config.example.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

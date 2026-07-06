@@ -1,7 +1,7 @@
 """Notification plumbing — all offline (network is monkeypatched away)."""
 import urllib.request
 
-import notify
+from boligvagten import notify
 
 
 def test_generate_topic_format_and_uniqueness():

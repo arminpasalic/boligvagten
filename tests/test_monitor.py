@@ -1,8 +1,7 @@
 """State persistence, source registry, and first-run config bootstrap."""
 import json
 
-import monitor
-import sources
+from boligvagten import monitor, sources
 
 # ---------------------------------------------------------------- state
 
