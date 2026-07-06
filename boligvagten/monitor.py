@@ -15,6 +15,7 @@ import importlib.util
 import json
 import random
 import re
+import sys
 import time
 from datetime import datetime
 
@@ -45,10 +46,15 @@ def ensure_config():
 
 def load_config():
     created = ensure_config()
-    # Import by path — cwd is not on sys.path when running as an installed command.
-    spec = importlib.util.spec_from_file_location("boligvagten_config", CONFIG_FILE)
-    cfg = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cfg)
+    # Import by path — cwd is not on sys.path when running as an installed
+    # command. Skip bytecode so no __pycache__ appears next to the config.
+    old_flag, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec = importlib.util.spec_from_file_location("boligvagten_config", CONFIG_FILE)
+        cfg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cfg)
+    finally:
+        sys.dont_write_bytecode = old_flag
     return cfg, created
 
 
