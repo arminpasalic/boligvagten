@@ -1,0 +1,41 @@
+name: Request a site
+description: A Danish housing site boligvagten should watch — the most valuable contribution.
+labels: [new-source]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A new source is ~40 lines plus a test — [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)
+        walks you through writing it yourself, or file this and someone can pick it up.
+  - type: input
+    id: site
+    attributes:
+      label: Site
+      placeholder: https://findbolig.nu
+    validations:
+      required: true
+  - type: input
+    id: search
+    attributes:
+      label: Example search URL
+      description: A URL with filters applied (city, price, …) — the search users would watch.
+  - type: dropdown
+    id: market
+    attributes:
+      label: Market
+      options: [Rentals, For-sale, Both]
+    validations:
+      required: true
+  - type: input
+    id: coverage
+    attributes:
+      label: Coverage area
+      placeholder: Copenhagen / Aarhus / all of Denmark
+  - type: textarea
+    id: data
+    attributes:
+      label: Where the data lives (optional)
+      description: >
+        Checked DevTools → Network already? A JSON/XHR endpoint, a Remix/Next
+        data URL, or "server-rendered HTML" is exactly the head start a
+        contributor needs.

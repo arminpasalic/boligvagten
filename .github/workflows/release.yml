@@ -1,0 +1,32 @@
+name: Release
+
+# Tag a version (git tag v1.2.3 && git push --tags) and this publishes the
+# package to PyPI (trusted publishing — configure the publisher once under
+# PyPI project settings) and creates the GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # PyPI trusted publishing (no API token secrets)
+      contents: write   # create the GitHub release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

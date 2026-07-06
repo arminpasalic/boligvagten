@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dev tools
-        run: pip install pytest ruff
+        run: pip install pytest pytest-cov ruff
       - name: Lint
         run: ruff check .
       - name: Tests (offline — parsers run against recorded fixtures)
-        run: pytest -q
+        run: pytest -q --cov=boligvagten --cov-report=term-missing

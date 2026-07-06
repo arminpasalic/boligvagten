@@ -1,0 +1,7 @@
+# Runtime has zero dependencies — only the GitHub Actions need version bumps.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

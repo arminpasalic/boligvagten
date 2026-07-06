@@ -1,7 +1,7 @@
 """Source registry.
 
 Adding a site takes two steps:
-  1. Copy sources/_template.py to sources/yoursite.py and fill in parse().
+  1. Copy _template.py to yoursite.py (next to this file) and fill in parse().
   2. Import it and add it to REGISTRY below.
 Everything else (polling, filtering, deduping, notifications) is generic.
 """

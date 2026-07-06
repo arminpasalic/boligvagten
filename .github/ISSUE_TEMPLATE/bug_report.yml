@@ -1,0 +1,34 @@
+name: Bug report
+description: A parser broke, the monitor misbehaves, or notifications don't arrive.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      placeholder: python3 monitor.py --list
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Paste the console output. Strip anything personal (your ntfy topic!).
+      render: text
+  - type: dropdown
+    id: source
+    attributes:
+      label: Affected source (if any)
+      options: [boligportal, cej, kereby, cityapartment, boligsiden, none / core]
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: python3 --version
