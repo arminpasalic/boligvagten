@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from boligvagten.sources import boligportal, cej, cityapartment, kereby
+from boligvagten.sources import boligportal, boligsiden, cej, cityapartment, kereby
 from boligvagten.sources.base import Listing
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -81,6 +81,79 @@ def test_boligportal_parse_fields():
 
 def test_boligportal_parse_empty_page():
     assert boligportal.parse("<html><body>no cards here</body></html>") == []
+
+
+# ---------------------------------------------------------------- Boligsiden
+
+def test_boligsiden_parse_fields():
+    # Fixture holds 4 cases: two complete, one sold (skipped), one missing
+    # its optional numbers (rooms/fee/year → None).
+    items = boligsiden.parse(load("boligsiden.json"))
+    assert len(items) == 3
+    first = items[0]
+    assert first == Listing(
+        source="boligsiden",
+        id="bs:ce2c61f4-db62-4ce6-b665-daa4e087940e",
+        name="Renoveret 2-værelses på Islands Brygge med skøn sydvestvendt altan",
+        address="Gunløgsgade 22, 3. 2, 2300 København S",
+        rooms=2,
+        size_m2=47,
+        price_dkk=3975000,
+        url="https://www.boligsiden.dk/adresse/gunloegsgade-22-3-2-2300-koebenhavn-s",
+        deal="sale",
+        monthly_fee_dkk=3645,
+        year_built=1970,
+        description=first.description,  # long text — checked separately below
+    )
+    assert "elevator" in first.description.lower()
+    # Ground floor renders Danish-style ("st."), not floor "0".
+    assert items[1].address == "Vigerslevvej 336, st. tv, 2500 Valby"
+    # Missing optionals stay None — the filter layer treats None as "keep".
+    assert (items[2].rooms, items[2].monthly_fee_dkk, items[2].year_built) == (None, None, None)
+
+
+def test_boligsiden_parse_rejects_garbage():
+    with pytest.raises(json.JSONDecodeError):
+        boligsiden.parse("<html>not json</html>")
+    with pytest.raises(RuntimeError, match="no 'cases'"):
+        boligsiden.parse('{"unexpected": true}')
+
+
+def test_boligsiden_fetch_paginates_newest_first(monkeypatch):
+    fixture = json.loads(load("boligsiden.json"))
+    pages = {
+        1: {"cases": fixture["cases"][:2], "totalHits": 3},
+        2: {"cases": fixture["cases"][3:4], "totalHits": 3},
+        3: {"cases": [], "totalHits": 3},  # must never be requested
+    }
+    requested = []
+
+    def fake_get(url, timeout=30):
+        page = int(url.split("page=")[-1].split("&")[0])
+        requested.append(url)
+        return json.dumps(pages[page])
+
+    monkeypatch.setattr(boligsiden, "http_get", fake_get)
+    conf = {"url": "https://api.boligsiden.dk/search/cases?municipalities=x", "max_pages": 5}
+    items = boligsiden.fetch(conf)
+    # totalHits satisfied after page 2 — page 3 is never fetched.
+    assert len(requested) == 2
+    assert requested[0].endswith("page=1") and requested[1].endswith("page=2")
+    assert [it.id[:11] for it in items] == ["bs:ce2c61f4", "bs:6e86ccd5", "bs:4dbdff19"]
+
+
+def test_boligsiden_fetch_honors_max_pages(monkeypatch):
+    fixture = json.loads(load("boligsiden.json"))
+    many = {"cases": fixture["cases"][:2], "totalHits": 999}
+    calls = []
+
+    def fake_get(url, timeout=30):
+        calls.append(url)
+        return json.dumps(many)
+
+    monkeypatch.setattr(boligsiden, "http_get", fake_get)
+    boligsiden.fetch({"url": "https://api.example/search?x=1"})  # default max_pages=2
+    assert len(calls) == 2
 
 
 # ---------------------------------------------------------------- Kereby

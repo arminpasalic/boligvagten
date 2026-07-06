@@ -106,6 +106,29 @@ SOURCES = {
             "max_price_dkk": 20000,   # Kereby skews expensive
         },
     },
+
+    # Boligsiden (boligsiden.dk) — the FOR-SALE market: ejerlejligheder,
+    # andelsboliger, houses, all of Denmark. Not renting? This is the one
+    # source in the buy column; disable it if you only hunt rentals.
+    # Getting your URL: this uses Boligsiden's public search API, so the
+    # params are edited by hand rather than copied from the site. Area:
+    # municipalities=<name> or zipCodes=<zip> (repeat either for several).
+    # Types: addressTypes=condo,cooperative,villa,terraced house,...
+    # Bounds: priceMin/priceMax (cash), monthlyExpenseMin/Max (ejerudgift),
+    # numberOfRoomsMin/Max, areaMin/Max.
+    # Keep sortBy=daysListed&sortAscending=true (newest first) — the monitor
+    # only reads "max_pages" pages (default 2) per poll and relies on new
+    # listings surfacing at the top.
+    "boligsiden": {
+        "enabled": True,
+        "url": (
+            "https://api.boligsiden.dk/search/cases"
+            "?municipalities=k%C3%B8benhavn&addressTypes=condo,cooperative"
+            "&priceMax=5000000&per_page=50"
+            "&sortBy=daysListed&sortAscending=true"
+        ),
+        # "max_pages": 2,   # pages fetched per poll; raise for --list sweeps
+    },
 }
 
 # ---------------------------------------------------------------------------

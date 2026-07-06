@@ -5,10 +5,11 @@ Adding a site takes two steps:
   2. Import it and add it to REGISTRY below.
 Everything else (polling, filtering, deduping, notifications) is generic.
 """
-from . import boligportal, cej, cityapartment, kereby
+from . import boligportal, boligsiden, cej, cityapartment, kereby
 from .base import Listing  # re-export: `from sources import Listing`  # noqa: F401
 
-REGISTRY = [cej, cityapartment, boligportal, kereby]
+# Rental sites first, the for-sale market last.
+REGISTRY = [cej, cityapartment, boligportal, kereby, boligsiden]
 
 
 def enabled(sources_cfg):
