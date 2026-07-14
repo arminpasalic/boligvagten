@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Default polling jitter is now 30–60 seconds.
+- Seen IDs and CEJ action status share a versioned, atomically replaced state
+  file with legacy migration and last-known-good recovery.
+- Failed ntfy deliveries remain pending for the next poll instead of being
+  marked seen; CEJ actions use a durable outbox and interrupted submissions
+  require manual review rather than being blindly retried.
+- HTML/JSON sources now distinguish explicit empty results from unexpected
+  response shapes and report parser-health failures.
+- CI runs on every pushed branch and builds the distribution. Releases now
+  validate SemVer/tag alignment and main ancestry, then lint, test, build, and
+  smoke-test the installed wheel before publishing.
+
 ## [1.0.0] - 2026-07-06
 
 Boligvagten grows from a rental monitor into a Danish housing watcher:

@@ -13,9 +13,11 @@ one module per site — see CONTRIBUTING.md for how to add your own.
 import argparse
 import importlib.util
 import json
+import os
 import random
 import re
 import sys
+import tempfile
 import time
 from datetime import datetime
 
@@ -25,6 +27,7 @@ from . import contact_cej, filters, notify, paths, sources
 CONFIG_FILE = paths.config_file()
 EXAMPLE_FILE = paths.example_file()
 STATE_FILE = paths.state_dir() / "seen_listings.json"
+STATE_VERSION = 2
 
 
 # ---------- Config bootstrap ----------
@@ -90,17 +93,129 @@ def run_onboarding(cfg):
     notify.print_onboarding(n, sent)
 
 
-# ---------- Seen-listing state ----------
+# ---------- Durable state ----------
+
+
+def _empty_state():
+    return {"version": STATE_VERSION, "initialized": False, "seen": set(), "actions": {}}
+
+
+def _decode_state(raw):
+    """Validate current state and migrate the legacy JSON-list format in memory."""
+    if isinstance(raw, list):
+        if not all(isinstance(item, str) for item in raw):
+            raise ValueError("legacy state must contain only listing IDs")
+        return {
+            "version": STATE_VERSION,
+            "initialized": True,
+            "seen": set(raw),
+            "actions": {},
+        }
+    if not isinstance(raw, dict) or raw.get("version") != STATE_VERSION:
+        raise ValueError(f"unsupported state format (expected version {STATE_VERSION})")
+    seen = raw.get("seen")
+    actions = raw.get("actions")
+    if not isinstance(seen, list) or not all(isinstance(item, str) for item in seen):
+        raise ValueError("state 'seen' must be a list of listing IDs")
+    if not isinstance(actions, dict) or not all(
+        isinstance(key, str) and isinstance(value, dict) for key, value in actions.items()
+    ):
+        raise ValueError("state 'actions' must be an object")
+    return {
+        "version": STATE_VERSION,
+        "initialized": bool(raw.get("initialized", True)),
+        "seen": set(seen),
+        "actions": actions,
+    }
+
+
+def _backup_file():
+    return STATE_FILE.with_name(f"{STATE_FILE.name}.bak")
+
+
+def load_state():
+    """Load validated state, recovering from the last known-good backup if needed."""
+    if not STATE_FILE.exists():
+        return _empty_state()
+    try:
+        return _decode_state(json.loads(STATE_FILE.read_text()))
+    except (OSError, ValueError, json.JSONDecodeError) as current_error:
+        backup = _backup_file()
+        if backup.exists():
+            try:
+                recovered = _decode_state(json.loads(backup.read_text()))
+                print(
+                    f"[state] {STATE_FILE} is invalid ({current_error}); "
+                    f"recovered from {backup}.",
+                    flush=True,
+                )
+                save_state(recovered)
+                return recovered
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+        raise RuntimeError(
+            f"state file is invalid and no usable backup exists: {STATE_FILE}: {current_error}"
+        ) from current_error
+
+
+def _atomic_write(path, text):
+    """Write text durably, then atomically replace path on the same filesystem."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as tmp:
+            tmp.write(text)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_name, path)
+        # Persist the directory entry too where the platform permits it.
+        try:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            pass
+        else:
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def save_state(state):
+    """Atomically persist state and retain the previous valid generation as backup."""
+    payload = {
+        "version": STATE_VERSION,
+        "initialized": bool(state.get("initialized")),
+        "seen": sorted(state["seen"]),
+        "actions": state["actions"],
+    }
+    if STATE_FILE.exists():
+        previous = STATE_FILE.read_text()
+        try:
+            _decode_state(json.loads(previous))
+        except (ValueError, json.JSONDecodeError):
+            pass  # Never replace a good backup with corrupt state.
+        else:
+            _atomic_write(_backup_file(), previous)
+    _atomic_write(STATE_FILE, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def load_seen():
-    if STATE_FILE.exists():
-        return set(json.loads(STATE_FILE.read_text()))
-    return set()
+    """Compatibility helper for callers that only need listing IDs."""
+    return load_state()["seen"]
 
 
 def save_seen(ids):
-    STATE_FILE.write_text(json.dumps(sorted(ids), indent=2))
+    """Compatibility helper that preserves the durable action outbox."""
+    state = load_state()
+    state["initialized"] = True
+    state["seen"] = set(ids)
+    save_state(state)
 
 
 # ---------- New-listing handling ----------
@@ -143,6 +258,7 @@ def notify_title(new_items):
 
 
 def notify_new(new_items, cfg):
+    """Send a batch and return whether its required notification channel accepted it."""
     lines = [f"{len(new_items)} new listing(s):"]
     for it in new_items:
         lines.append(f"  • [{it.source}] {it.address} — {meta_line(it)}")
@@ -154,21 +270,71 @@ def notify_new(new_items, cfg):
     tags = ",".join(sorted({"moneybag" if it.deal == "sale" else "house" for it in new_items}))
     if getattr(cfg, "MACOS_NOTIFICATION", True):
         notify.send_macos(title, f"{len(new_items)} new. First: {new_items[0].address}")
-    notify.send_ntfy(getattr(cfg, "NTFY", {}), title, message,
-                     click_url=new_items[0].url, tags=tags)
-    run_actions(new_items, cfg)
+    ntfy_cfg = getattr(cfg, "NTFY", {})
+    if ntfy_cfg.get("enabled"):
+        return notify.send_ntfy(
+            ntfy_cfg, title, message, click_url=new_items[0].url, tags=tags
+        )
+    return True
 
 
-def run_actions(new_items, cfg):
-    """Optional follow-ups per source — currently the CEJ contact-form filler."""
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def queue_actions(new_items, cfg, state):
+    """Add opt-in CEJ actions to the state transaction before listings are acknowledged."""
     cc = getattr(cfg, "CEJ_CONTACT", None) or {}
-    if cc.get("auto_contact"):
-        for it in new_items:
-            if it.source == "cej":
-                try:
-                    contact_cej.contact(it.url, cc)
-                except Exception as e:
-                    print(f"[cej] auto-contact error: {e}", flush=True)
+    if not cc.get("auto_contact"):
+        return
+    for it in new_items:
+        if it.source == "cej" and it.id not in state["actions"]:
+            state["actions"][it.id] = {
+                "source": it.source,
+                "url": it.url,
+                "status": "pending",
+                "live_send": bool(cc.get("live_send")),
+                "queued_at": _now(),
+            }
+
+
+def process_action_outbox(cfg, state):
+    """Run queued actions once; interrupted submissions require manual review."""
+    cc = getattr(cfg, "CEJ_CONTACT", None) or {}
+    changed = False
+    for listing_id, action in state["actions"].items():
+        if action.get("status") == "in_progress":
+            action["status"] = "needs_review"
+            action["updated_at"] = _now()
+            changed = True
+            print(
+                f"[cej] {listing_id} was interrupted while auto-contact was running. "
+                "It will NOT be retried automatically; inspect the CEJ inquiry and "
+                f"the action entry in {STATE_FILE}.",
+                flush=True,
+            )
+    if changed:
+        save_state(state)
+
+    if not cc.get("auto_contact"):
+        return
+    for listing_id, action in state["actions"].items():
+        if action.get("status") != "pending":
+            continue
+        action["status"] = "in_progress"
+        action["attempted_at"] = _now()
+        save_state(state)  # Durable claim before opening/submitting the external form.
+        action_cc = dict(cc)
+        action_cc["live_send"] = bool(action.get("live_send"))
+        try:
+            succeeded = contact_cej.contact(action["url"], action_cc)
+        except Exception as e:
+            succeeded = False
+            action["error"] = str(e)
+            print(f"[cej] auto-contact error for {listing_id}: {e}", flush=True)
+        action["status"] = "completed" if succeeded else "failed"
+        action["updated_at"] = _now()
+        save_state(state)
 
 
 # ---------- Core check ----------
@@ -188,6 +354,8 @@ def fetch_enabled(cfg):
             print(f"[{stamp}] {mod.LABEL}: {len(kept)} listings{note}", flush=True)
             all_items.extend(kept)
             ok_count += 1
+        except sources.ParserHealthError as e:
+            print(f"[{stamp}] {mod.LABEL}: parser health check failed — {e}", flush=True)
         except Exception as e:
             print(f"[{stamp}] {mod.LABEL}: fetch failed — {e}", flush=True)
     return all_items, ok_count
@@ -199,12 +367,14 @@ def per_source_filters(cfg):
 
 
 def check_once(cfg):
+    state = load_state()
+    process_action_outbox(cfg, state)
     all_items, ok_count = fetch_enabled(cfg)
     if ok_count == 0:
         # Every source failed — assume offline; don't touch state.
         return None
 
-    seen = load_seen()
+    seen = state["seen"]
     current = {it.id: it for it in all_items}
     new_ids = [i for i in current if i not in seen]
 
@@ -215,19 +385,33 @@ def check_once(cfg):
         flush=True,
     )
 
-    if new_ids and seen:
+    if new_ids and state["initialized"]:
         # description_keywords runs here — only new listings, so a lazy page
         # fetch per listing stays cheap. Dropped ones still land in "seen".
         fresh = filters.deep_apply(
             [current[i] for i in new_ids],
             getattr(cfg, "FILTERS", None), per_source_filters(cfg),
         )
-        if fresh:
-            notify_new(fresh, cfg)
-    elif new_ids and not seen:
+        fresh_ids = {it.id for it in fresh}
+        # Deep-filter rejections are deliberately acknowledged; notification
+        # failures are not, so those listings retry on the next poll.
+        state["seen"].update(set(new_ids) - fresh_ids)
+        if fresh and notify_new(fresh, cfg):
+            queue_actions(fresh, cfg, state)
+            state["seen"].update(fresh_ids)
+        elif fresh:
+            print(
+                f"[notify] delivery failed; {len(fresh)} listing(s) remain pending "
+                "and will retry on the next poll.",
+                flush=True,
+            )
+    elif new_ids and not state["initialized"]:
         print("First run — recording current listings as baseline (no alerts).", flush=True)
+        state["seen"].update(new_ids)
 
-    save_seen(set(current.keys()) | seen)
+    state["initialized"] = True
+    save_state(state)
+    process_action_outbox(cfg, state)
     return len(new_ids)
 
 
@@ -281,8 +465,8 @@ def test_notify(cfg):
 
 
 def run_loop(cfg, once=False):
-    lo = getattr(cfg, "POLL_MIN_SECONDS", 60)
-    hi = getattr(cfg, "POLL_MAX_SECONDS", 180)
+    lo = getattr(cfg, "POLL_MIN_SECONDS", 30)
+    hi = getattr(cfg, "POLL_MAX_SECONDS", 60)
     if lo > hi:
         lo, hi = hi, lo
     offline_cap = getattr(cfg, "OFFLINE_MAX_BACKOFF", 600)
@@ -334,7 +518,7 @@ def run_loop(cfg, once=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="monitor.py",
-        description="Watch Danish rental sites and get an alert the minute a new listing appears.",
+        description="Watch Danish housing sites and get an alert when a new listing appears.",
     )
     ap.add_argument("--once", action="store_true",
                     help="run a single check and exit")

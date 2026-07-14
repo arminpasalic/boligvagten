@@ -6,7 +6,7 @@ preferences belong in the `filters` section of the source config.
 """
 import json
 
-from .base import Listing, fetch_all
+from .base import Listing, ParserHealthError, fetch_all
 
 KEY = "kereby"
 LABEL = "Kereby"
@@ -15,8 +15,12 @@ LISTING_URL = "https://kerebyudlejning.dk/bolig/{id}"
 
 def parse(body, conf=None):
     data = json.loads(body)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise ParserHealthError("Kereby response is missing its expected 'items' list")
     out = []
-    for it in data.get("items", []):
+    for it in data["items"]:
+        if not isinstance(it, dict) or not it.get("id"):
+            raise ParserHealthError("Kereby returned an item without a stable ID")
         # Structural skips (not user preferences): parking lots, sold units, ...
         if it.get("classification") != "Residential":
             continue

@@ -10,11 +10,11 @@ need changes for typical tweaks.
 # Polling
 # ---------------------------------------------------------------------------
 # Seconds between checks. Each interval is randomized in [MIN, MAX] so the
-# traffic pattern looks human. 60–180s is fast enough to be among the first
-# for nearly every listing while staying polite to the sites. You can lower
-# it, but be reasonable — hammering the sites helps nobody.
-POLL_MIN_SECONDS = 60
-POLL_MAX_SECONDS = 180
+# traffic pattern looks human. 30–60s is fast enough to be among the first
+# for nearly every listing while remaining reasonable for the sites. Avoid
+# lowering it further — hammering the sites helps nobody.
+POLL_MIN_SECONDS = 30
+POLL_MAX_SECONDS = 60
 
 # When every source fails (you're probably offline), back off exponentially
 # up to this many seconds between retries.

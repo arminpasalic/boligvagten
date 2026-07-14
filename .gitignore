@@ -3,7 +3,7 @@
 config.py
 
 # Runtime state and artifacts
-seen_listings.json
+seen_listings.json*
 *.png
 
 # OS / editor / tooling junk

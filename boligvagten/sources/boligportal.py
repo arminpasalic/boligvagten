@@ -7,7 +7,7 @@ site and copy the URL (see config.example.py).
 """
 import re
 
-from .base import Listing, fetch_all, strip_html
+from .base import Listing, ParserHealthError, fetch_all, known_empty_page, strip_html
 
 KEY = "boligportal"
 LABEL = "Boligportal"
@@ -19,6 +19,12 @@ def parse(body, conf=None):
     # visible meta (rooms, size, area, address, price) lives in sibling nodes
     # until the next card begins. Split on the link class to get per-card chunks.
     parts = body.split("AdCardSrp__Link")
+    if len(parts) == 1:
+        if known_empty_page(body):
+            return []
+        raise ParserHealthError(
+            "Boligportal response has neither listing-card markup nor an explicit empty result"
+        )
     out = []
     seen_ids = set()
     for chunk in parts[1:]:
@@ -55,6 +61,10 @@ def parse(body, conf=None):
             price_dkk=int(price.group(1).replace(".", "")) if price else None,
             url=BASE + path,
         ))
+    if not out and not known_empty_page(body):
+        raise ParserHealthError(
+            "Boligportal card marker was present, but no valid listing links were parsed"
+        )
     return out
 
 

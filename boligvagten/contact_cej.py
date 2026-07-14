@@ -19,7 +19,7 @@ SCREENSHOT = paths.state_dir() / "cej_phase3.png"
 
 
 def contact(listing_url, cc):
-    """Fill (and optionally submit) the contact form. `cc` is the CEJ_CONTACT dict."""
+    """Fill the contact form and return whether the action reached a terminal success."""
     try:
         from playwright.sync_api import TimeoutError as PWTimeout
         from playwright.sync_api import sync_playwright
@@ -29,7 +29,7 @@ def contact(listing_url, cc):
             "      pip install playwright && playwright install chromium",
             flush=True,
         )
-        return
+        return False
 
     live = bool(cc["live_send"])
     headless = bool(cc["headless"])
@@ -76,13 +76,14 @@ def contact(listing_url, cc):
                         f"{listing_url}",
                         flush=True,
                     )
+                    return True
                 else:
                     print(
                         f"[cej] contact form not found (layout changed?) — skipping: "
                         f"{listing_url}",
                         flush=True,
                     )
-                return
+                    return False
 
             page.locator("#input-name").fill(cc["name"])
             page.locator("#input-email").fill(cc["email"])
@@ -124,10 +125,13 @@ def contact(listing_url, cc):
                 # Keep the browser open briefly when not headless so you can look.
                 if not headless:
                     page.wait_for_timeout(20000)
+            return True
         except PWTimeout as e:
             print(f"[cej] timed out on {listing_url}: {e}", flush=True)
+            return False
         except Exception as e:
             print(f"[cej] contact failed for {listing_url}: {e}", flush=True)
+            return False
         finally:
             browser.close()
 

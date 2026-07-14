@@ -6,7 +6,7 @@ Adding a site takes two steps:
 Everything else (polling, filtering, deduping, notifications) is generic.
 """
 from . import boligportal, boligsiden, cej, cityapartment, kereby
-from .base import Listing  # re-export: `from sources import Listing`  # noqa: F401
+from .base import Listing, ParserHealthError  # noqa: F401
 
 # Rental sites first, the for-sale market last.
 REGISTRY = [cej, cityapartment, boligportal, kereby, boligsiden]

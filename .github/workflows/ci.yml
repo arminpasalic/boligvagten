@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 jobs:
@@ -17,8 +17,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dev tools
-        run: pip install pytest pytest-cov ruff
+        run: pip install build pytest pytest-cov ruff
       - name: Lint
         run: ruff check .
       - name: Tests (offline — parsers run against recorded fixtures)
         run: pytest -q --cov=boligvagten --cov-report=term-missing
+      - name: Build package
+        run: python -m build

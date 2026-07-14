@@ -9,6 +9,25 @@ from dataclasses import dataclass
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 
+class ParserHealthError(RuntimeError):
+    """The response was readable but no longer matched a source's expected schema."""
+
+
+def known_empty_page(body):
+    """True for explicit zero-result messages, not merely missing listing markup."""
+    text = strip_html(body).lower()
+    markers = (
+        "ingen boliger",
+        "ingen lejeboliger",
+        "ingen ledige boliger",
+        "ingen resultater",
+        "no apartments",
+        "no listings",
+        "no results",
+    )
+    return any(marker in text for marker in markers)
+
+
 @dataclass
 class Listing:
     """One listing, normalized across all sources — rentals and for-sale alike.

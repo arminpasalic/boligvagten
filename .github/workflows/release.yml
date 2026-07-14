@@ -16,13 +16,33 @@ jobs:
       contents: write   # create the GitHub release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate release ref
+        run: |
+          python scripts/validate_release.py "$GITHUB_REF_NAME"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tags must point to a commit already contained in main."
+            exit 1
+          fi
+      - name: Install verification tools
+        run: pip install build pytest ruff
+      - name: Lint and test
+        run: |
+          ruff check .
+          pytest -q
       - name: Build sdist + wheel
         run: |
-          pip install build
           python -m build
+      - name: Smoke-test installed wheel
+        run: |
+          python -m venv /tmp/boligvagten-release-smoke
+          /tmp/boligvagten-release-smoke/bin/pip install --no-deps dist/*.whl
+          cd /tmp
+          HOME=/tmp/boligvagten-release-home /tmp/boligvagten-release-smoke/bin/boligvagten --help
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
       - name: GitHub release

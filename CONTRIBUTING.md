@@ -84,7 +84,7 @@ optional extra like the Playwright-based auto-contact. Translating docs
 
 ## A note on scraping etiquette
 
-Sources should poll gently (the default 60–180 s jitter), identify listings
+Sources should poll gently (the default 30–60 s jitter), identify listings
 by stable IDs, and never automate actions on a site beyond reading public
 listings — the CEJ contact-form filler is the deliberate, opt-in exception
 and new automation like it needs a clear safety story (dry-run default,

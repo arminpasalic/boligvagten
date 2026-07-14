@@ -6,7 +6,7 @@ string — set them on the site and copy the URL (see config.example.py).
 """
 import re
 
-from .base import Listing, fetch_all, strip_html
+from .base import Listing, ParserHealthError, fetch_all, known_empty_page, strip_html
 
 KEY = "cityapartment"
 LABEL = "City Apartment"
@@ -19,11 +19,12 @@ _ARTICLE = re.compile(
 
 
 def parse(body, conf=None):
-    fallback_url = (conf or {}).get("url", "https://cityapartment.dk/")
     out = []
     for m in _ARTICLE.finditer(body):
         post_id, block = m.group(1), m.group(2)
         href_m = re.search(r'href="(https://cityapartment\.dk/[^"]+)"', block)
+        if not href_m:
+            raise ParserHealthError(f"City Apartment article {post_id} has no direct listing link")
         text = strip_html(block)
         size = re.search(r"(\d+)\s*m²", text)
         price = re.search(r"(\d[\d.,]*)\s*DKK", text)
@@ -41,8 +42,12 @@ def parse(body, conf=None):
             size_m2=int(size.group(1)) if size else None,
             price_dkk=int(price.group(1).replace(".", "").replace(",", ""))
             if price else None,
-            url=href_m.group(1) if href_m else fallback_url,
+            url=href_m.group(1),
         ))
+    if not out and not known_empty_page(body):
+        raise ParserHealthError(
+            "City Apartment response has neither apartment articles nor an explicit empty result"
+        )
     return out
 
 

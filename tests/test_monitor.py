@@ -1,5 +1,8 @@
 """State persistence, source registry, and first-run config bootstrap."""
 import json
+import types
+
+import pytest
 
 from boligvagten import monitor, sources
 
@@ -10,10 +13,12 @@ def test_seen_state_round_trip(tmp_path, monkeypatch):
     assert monitor.load_seen() == set()
     monitor.save_seen({"cej:b", "bp:1", "cej:a"})
     assert monitor.load_seen() == {"cej:a", "cej:b", "bp:1"}
-    # File format stays a sorted JSON list — compatible with pre-refactor state.
-    assert json.loads((tmp_path / "seen_listings.json").read_text()) == [
-        "bp:1", "cej:a", "cej:b",
-    ]
+    raw = json.loads((tmp_path / "seen_listings.json").read_text())
+    assert raw["version"] == monitor.STATE_VERSION
+    assert raw["initialized"] is True
+    assert raw["seen"] == ["bp:1", "cej:a", "cej:b"]
+    assert raw["actions"] == {}
+    assert not list(tmp_path.glob(".seen_listings.json.*"))
 
 
 def test_legacy_state_file_is_accepted(tmp_path, monkeypatch):
@@ -21,6 +26,26 @@ def test_legacy_state_file_is_accepted(tmp_path, monkeypatch):
     state.write_text('["bp:123", "kereby:x"]')
     monkeypatch.setattr(monitor, "STATE_FILE", state)
     assert monitor.load_seen() == {"bp:123", "kereby:x"}
+
+
+def test_state_recovers_from_last_valid_backup(tmp_path, monkeypatch):
+    state_file = tmp_path / "seen.json"
+    monkeypatch.setattr(monitor, "STATE_FILE", state_file)
+    monitor.save_seen({"x:first"})
+    monitor.save_seen({"x:first", "x:second"})
+    state_file.write_text("{truncated")
+
+    # The backup is the prior complete generation, never the corrupt current file.
+    assert monitor.load_seen() == {"x:first"}
+    assert json.loads(state_file.read_text())["seen"] == ["x:first"]
+
+
+def test_invalid_state_without_backup_stops_safely(tmp_path, monkeypatch):
+    state_file = tmp_path / "seen.json"
+    state_file.write_text("not json")
+    monkeypatch.setattr(monitor, "STATE_FILE", state_file)
+    with pytest.raises(RuntimeError, match="no usable backup"):
+        monitor.load_state()
 
 
 # ---------------------------------------------------------------- formatting
@@ -58,16 +83,29 @@ def test_notify_title_splits_markets():
     assert monitor.notify_title([rent, rent, sale]) == "2 nye lejeboliger, 1 til salg"
 
 
+def test_notify_new_reports_required_channel_delivery(monkeypatch):
+    item = _listing()
+    monkeypatch.setattr(monitor.notify, "send_ntfy", lambda *args, **kwargs: False)
+    enabled = types.SimpleNamespace(
+        NTFY={"enabled": True, "topic": "x"}, MACOS_NOTIFICATION=False
+    )
+    disabled = types.SimpleNamespace(NTFY={"enabled": False}, MACOS_NOTIFICATION=False)
+    assert monitor.notify_new([item], enabled) is False
+    assert monitor.notify_new([item], disabled) is True
+
+
 def test_check_once_deep_filters_new_listings(tmp_path, monkeypatch):
     """description_keywords gates the alert but never the seen-state."""
-    import types
-
     cfg = types.SimpleNamespace(
         FILTERS={"description_keywords": ["altan"]}, SOURCES={},
     )
     monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
     notified = []
-    monkeypatch.setattr(monitor, "notify_new", lambda items, _cfg: notified.append(items))
+    def notify(items, _cfg):
+        notified.append(items)
+        return True
+
+    monkeypatch.setattr(monitor, "notify_new", notify)
 
     batches = [
         [_listing(id="x:base", description="baseline")],
@@ -86,6 +124,95 @@ def test_check_once_deep_filters_new_listings(tmp_path, monkeypatch):
     assert [it.id for it in notified[0]] == ["x:hit"]
     # The silenced listing is still remembered — it must never re-alert.
     assert "x:plain" in monitor.load_seen()
+
+
+def test_notification_failure_retries_before_marking_seen(tmp_path, monkeypatch):
+    cfg = types.SimpleNamespace(FILTERS={}, SOURCES={})
+    monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
+    batches = [
+        [_listing(id="x:base")],
+        [_listing(id="x:base"), _listing(id="x:new")],
+        [_listing(id="x:base"), _listing(id="x:new")],
+    ]
+    monkeypatch.setattr(monitor, "fetch_enabled", lambda _cfg: (batches.pop(0), 1))
+    outcomes = iter([False, True])
+    attempts = []
+
+    def notify(items, _cfg):
+        attempts.append([item.id for item in items])
+        return next(outcomes)
+
+    monkeypatch.setattr(monitor, "notify_new", notify)
+    monitor.check_once(cfg)  # baseline
+    monitor.check_once(cfg)  # failed delivery
+    assert "x:new" not in monitor.load_seen()
+    monitor.check_once(cfg)  # successful retry
+    assert "x:new" in monitor.load_seen()
+    assert attempts == [["x:new"], ["x:new"]]
+
+
+def test_empty_first_check_is_still_an_initialized_baseline(tmp_path, monkeypatch):
+    cfg = types.SimpleNamespace(FILTERS={}, SOURCES={})
+    monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
+    batches = [[], [_listing(id="x:first")]]
+    monkeypatch.setattr(monitor, "fetch_enabled", lambda _cfg: (batches.pop(0), 1))
+    notified = []
+    monkeypatch.setattr(
+        monitor, "notify_new", lambda items, _cfg: notified.append(items) or True
+    )
+
+    assert monitor.check_once(cfg) == 0
+    assert monitor.check_once(cfg) == 1
+    assert [item.id for item in notified[0]] == ["x:first"]
+
+
+def test_parser_health_failure_does_not_count_as_a_success(monkeypatch, capsys):
+    class BrokenSource:
+        KEY = "broken"
+        LABEL = "Broken source"
+
+        @staticmethod
+        def fetch(_conf):
+            raise sources.ParserHealthError("schema changed")
+
+    monkeypatch.setattr(monitor.sources, "enabled", lambda _cfg: [(BrokenSource, {})])
+    cfg = types.SimpleNamespace(FILTERS={}, SOURCES={})
+    assert monitor.fetch_enabled(cfg) == ([], 0)
+    assert "parser health check failed" in capsys.readouterr().out
+
+
+def test_action_outbox_completes_and_interrupted_action_never_retries(tmp_path, monkeypatch):
+    cfg = types.SimpleNamespace(CEJ_CONTACT={"auto_contact": True, "live_send": True})
+    monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
+    calls = []
+    monkeypatch.setattr(
+        monitor.contact_cej, "contact", lambda url, _cc: calls.append(url) or True
+    )
+    state = monitor._empty_state()
+    item = _listing(source="cej", id="cej:1", url="https://cej.example/1")
+    monitor.queue_actions([item], cfg, state)
+    monitor.save_state(state)
+    monitor.process_action_outbox(cfg, state)
+    assert calls == [item.url]
+    assert state["actions"][item.id]["status"] == "completed"
+
+    # Simulate termination after the durable claim but before a known result.
+    state["actions"][item.id]["status"] = "in_progress"
+    monitor.save_state(state)
+    monitor.process_action_outbox(cfg, state)
+    assert calls == [item.url]
+    assert state["actions"][item.id]["status"] == "needs_review"
+
+
+def test_default_poll_interval_is_30_to_60_seconds(monkeypatch):
+    cfg = types.SimpleNamespace(SOURCES={}, FILTERS={})
+    sampled = []
+    monkeypatch.setattr(monitor, "check_once", lambda _cfg: 0)
+    monkeypatch.setattr(
+        monitor.random, "uniform", lambda low, high: sampled.append((low, high)) or low
+    )
+    monitor.run_loop(cfg, once=True)
+    assert sampled == [(30, 60)]
 
 
 # ---------------------------------------------------------------- registry

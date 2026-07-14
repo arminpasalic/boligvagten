@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from boligvagten.sources import boligportal, boligsiden, cej, cityapartment, kereby
-from boligvagten.sources.base import Listing
+from boligvagten.sources.base import Listing, ParserHealthError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -61,6 +61,13 @@ def test_cityapartment_parse_empty_page():
     assert cityapartment.parse("<html><body>no listings</body></html>") == []
 
 
+def test_cityapartment_detects_changed_markup():
+    with pytest.raises(ParserHealthError, match="neither apartment articles"):
+        cityapartment.parse("<html><body>Welcome to our redesigned search</body></html>")
+    with pytest.raises(ParserHealthError, match="no direct listing link"):
+        cityapartment.parse('<article id="post-123" class="cityapartments">broken</article>')
+
+
 # ---------------------------------------------------------------- Boligportal
 
 def test_boligportal_parse_fields():
@@ -80,7 +87,14 @@ def test_boligportal_parse_fields():
 
 
 def test_boligportal_parse_empty_page():
-    assert boligportal.parse("<html><body>no cards here</body></html>") == []
+    assert boligportal.parse("<html><body>no listings</body></html>") == []
+
+
+def test_boligportal_detects_changed_markup():
+    with pytest.raises(ParserHealthError, match="neither listing-card markup"):
+        boligportal.parse("<html><body>Welcome to our redesigned search</body></html>")
+    with pytest.raises(ParserHealthError, match="no valid listing links"):
+        boligportal.parse('<html><a class="AdCardSrp__Link" href="/new-url-shape">x</a></html>')
 
 
 # ---------------------------------------------------------------- Boligsiden
@@ -176,3 +190,7 @@ def test_kereby_parse_skips_nonresidential_and_unavailable():
 def test_kereby_parse_rejects_garbage():
     with pytest.raises(json.JSONDecodeError):
         kereby.parse("this is not json")
+    with pytest.raises(ParserHealthError, match="expected 'items' list"):
+        kereby.parse('{"unexpected": []}')
+    with pytest.raises(ParserHealthError, match="without a stable ID"):
+        kereby.parse('{"items": [{"classification": "Residential"}]}')

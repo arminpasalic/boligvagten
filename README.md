@@ -147,9 +147,9 @@ documented API params; …).
 },
 ```
 
-**Polling pace**: intervals are randomized (default 60–180 s). Be polite —
-faster than ~30 s helps nobody and risks getting the affected site's
-attention.
+**Polling pace**: intervals are randomized (default 30–60 s). Be polite —
+polling more frequently than the default helps little and risks getting the
+affected site's attention.
 
 ## Supported sources
 
@@ -199,9 +199,11 @@ boligvagten/notify.py      ntfy push + macOS banner + first-run onboarding
 boligvagten/contact_cej.py optional Playwright form-filler
 ```
 
-New listings are detected by ID, state survives restarts, network failures
-back off exponentially, and every parser is tested offline against recorded
-fixtures (`tests/`).
+New listings are detected by ID, state is written atomically, failed phone
+notifications retry, and CEJ actions use a durable outbox that avoids blind
+resubmission after an interrupted run. Network failures back off exponentially,
+parser responses are health-checked, and every parser is tested offline against
+recorded fixtures (`tests/`).
 
 ## Roadmap — sites that deserve a module
 
