@@ -15,7 +15,7 @@ jobs:
       id-token: write   # PyPI trusted publishing (no API token secrets)
       contents: write   # create the GitHub release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
