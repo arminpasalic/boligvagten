@@ -9,7 +9,6 @@ in minutes.
 *🇩🇰 [Læs denne side på dansk](README.da.md)*
 
 [![CI](https://github.com/arminpasalic/boligvagten/actions/workflows/ci.yml/badge.svg)](https://github.com/arminpasalic/boligvagten/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/boligvagten)](https://pypi.org/project/boligvagten/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
@@ -45,15 +44,32 @@ in minutes.
 
 ## Quick start
 
-With [uv](https://docs.astral.sh/uv/) (or `pipx install boligvagten`):
+Run the latest version directly from GitHub with `uvx`:
 
 ```bash
-uvx boligvagten
+uvx --from git+https://github.com/arminpasalic/boligvagten.git boligvagten
 ```
 
-Or clone and run — the monitor is pure standard library, so there is no
-`pip install` step ([requirements.txt](requirements.txt) exists to say
-exactly that):
+Or install it as a persistent command:
+
+```bash
+uv tool install git+https://github.com/arminpasalic/boligvagten.git
+boligvagten
+```
+
+To upgrade the installed tool later:
+
+```bash
+uv tool install --force git+https://github.com/arminpasalic/boligvagten.git
+```
+
+To uninstall it:
+
+```bash
+uv tool uninstall boligvagten
+```
+
+Or clone and run it directly — the monitor uses only the Python standard library:
 
 ```bash
 git clone https://github.com/arminpasalic/boligvagten.git

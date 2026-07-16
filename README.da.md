@@ -14,7 +14,7 @@ fremvisning og ingenting måles som regel i minutter.
 ## Kom i gang
 
 ```bash
-uvx boligvagten        # eller: git clone → cd boligvagten → python3 monitor.py
+uvx --from git+https://github.com/arminpasalic/boligvagten.git boligvagten
 ```
 
 Første kørsel opretter din `config.py`, genererer en privat alarmkanal og
