@@ -11,7 +11,7 @@ site and copy the URL (see config.example.py).
 """
 import re
 
-from .base import Listing, ParserHealthError, known_empty_page, fetch_all, strip_html
+from .base import Listing, ParserHealthError, fetch_all, known_empty_page, strip_html
 
 KEY = "boligportal"
 LABEL = "Boligportal"
