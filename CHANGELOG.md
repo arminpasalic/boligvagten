@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Boligportal parser now follows the September 2026 redesign, which replaced
+  the `AdCardSrp__Link` card class with hashed utility classes. Cards are
+  matched on the listing URL scheme (`…-id-<digits>`) instead of on CSS class
+  names, and fields are read from the card's title, area line, and price.
+  Prices carrying øre (`12.962,68 kr.`) no longer mis-parse.
+
 ### Changed
 - Default polling jitter is now 30–60 seconds.
 - Seen IDs and CEJ action status share a versioned, atomically replaced state

@@ -72,18 +72,20 @@ def test_cityapartment_detects_changed_markup():
 
 def test_boligportal_parse_fields():
     items = boligportal.parse(load("boligportal.html"))
-    assert [it.id for it in items] == ["bp:5472444", "bp:5647910"]
+    assert [it.id for it in items] == ["bp:5511000", "bp:5671274"]
     first = items[0]
     assert first == Listing(
         source="boligportal",
-        id="bp:5472444",
-        name="lejlighed 50 m²",
-        address="Brønshøj , Gadelandet",
-        rooms=2,
-        size_m2=50,
-        price_dkk=12700,
-        url="https://www.boligportal.dk/lejligheder/k%C3%B8benhavn/50m2-2-vaer-id-5472444",
+        id="bp:5511000",
+        name="3 vær. lejlighed på 90 m²",
+        address="Herlev, Hørkær",
+        rooms=3,
+        size_m2=90,
+        price_dkk=15350,
+        url="https://www.boligportal.dk/lejligheder/k%C3%B8benhavn/90m2-3-vaer-id-5511000",
     )
+    # Prices carrying øre ("12.962,68 kr.") truncate to whole kroner.
+    assert items[1].price_dkk == 12962
 
 
 def test_boligportal_parse_empty_page():
@@ -93,8 +95,9 @@ def test_boligportal_parse_empty_page():
 def test_boligportal_detects_changed_markup():
     with pytest.raises(ParserHealthError, match="neither listing-card markup"):
         boligportal.parse("<html><body>Welcome to our redesigned search</body></html>")
-    with pytest.raises(ParserHealthError, match="no valid listing links"):
-        boligportal.parse('<html><a class="AdCardSrp__Link" href="/new-url-shape">x</a></html>')
+    # A listing link whose id segment is gone is a schema change, not an empty page.
+    with pytest.raises(ParserHealthError, match="neither listing-card markup"):
+        boligportal.parse('<html><a href="/lejligheder/koebenhavn/new-url-shape">x</a></html>')
 
 
 # ---------------------------------------------------------------- Boligsiden
