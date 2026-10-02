@@ -1,8 +1,10 @@
 name: Release
 
-# Tag a version (git tag v1.2.3 && git push --tags) and this publishes the
-# package to PyPI (trusted publishing — configure the publisher once under
-# PyPI project settings) and creates the GitHub release.
+# Tag a version (git tag v1.2.3 && git push --tags) and this creates the
+# GitHub release with the wheel, sdist and the double-click zip attached.
+# Not published to PyPI yet: to add it, configure a trusted publisher on
+# PyPI, then add `environment: pypi`, `id-token: write` and a
+# pypa/gh-action-pypi-publish step.
 on:
   push:
     tags: ["v*"]
@@ -10,9 +12,7 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      id-token: write   # PyPI trusted publishing (no API token secrets)
       contents: write   # create the GitHub release
     steps:
       - uses: actions/checkout@v7
@@ -38,7 +38,7 @@ jobs:
         run: |
           python -m build
       - name: Build double-click download
-        # Kept out of dist/: the PyPI upload takes everything in that folder.
+        # Kept out of dist/, which a future PyPI upload would take whole.
         run: python scripts/build_bundle.py bundle
       - name: Smoke-test installed wheel
         run: |
@@ -47,8 +47,6 @@ jobs:
           cd /tmp
           HOME=/tmp/boligvagten-release-home /tmp/boligvagten-release-smoke/bin/boligvagten --help
           /tmp/boligvagten-release-smoke/bin/python -c "from importlib import resources; assert resources.files('boligvagten').joinpath('web_ui.html').is_file()"
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
       - name: GitHub release
         uses: softprops/action-gh-release@v3
         with:
