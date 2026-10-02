@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boligvagten</title>
+<style>
+  :root {
+    --ink: #000;
+    --paper: #fff;
+    --muted: #6b6b6b;
+    --rule: 1px solid #000;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.5 var(--sans);
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 96px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 0 0 16px; padding-top: 12px; border-top: var(--rule);
+  }
+  h3 { font-size: 15px; font-weight: 700; margin: 0; }
+  section { margin-top: 40px; }
+  p { margin: 0 0 12px; }
+  a { color: var(--ink); }
+  .hint { color: var(--muted); font-size: 13px; }
+  .mono, textarea, .log, code { font-family: var(--mono); font-size: 13px; }
+  .note { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .controls { display: flex; align-items: center; gap: 12px; }
+  .state::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: var(--ink); vertical-align: 1px; }
+  .state.off::before { background: var(--paper); border: 1px solid var(--ink); }
+  .lang { display: flex; }
+  .lang button { border: none; padding: 2px 4px; text-decoration: none; }
+  .lang button[aria-pressed="true"] { text-decoration: underline; text-underline-offset: 3px; font-weight: 700; }
+  .lang button:hover, .lang button:focus-visible { background: none; color: var(--ink); text-decoration: underline; }
+
+  button {
+    font: inherit; font-size: 14px; color: var(--ink); background: var(--paper);
+    border: var(--rule); border-radius: 0; padding: 6px 14px; cursor: pointer;
+  }
+  button:hover, button:focus-visible { background: var(--ink); color: var(--paper); }
+  button:disabled { color: var(--muted); border-color: var(--muted); background: var(--paper); cursor: default; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  input[type="text"], textarea {
+    font: inherit; color: var(--ink); background: var(--paper);
+    border: var(--rule); border-radius: 0; padding: 6px 8px; width: 100%;
+  }
+  textarea { resize: vertical; min-height: 64px; line-height: 1.45; overflow: hidden; }
+  input.num { width: 7.5em; }
+  input[type="checkbox"] { accent-color: #000; width: 15px; height: 15px; margin: 0 8px 0 0; vertical-align: -2px; }
+  label { display: inline-block; }
+  .invalid { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .err { display: block; font-size: 13px; font-weight: 700; margin-top: 4px; }
+  .err:empty { display: none; }
+
+  dl.status { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; border: var(--rule); }
+  dl.status div { padding: 10px 12px; border-left: var(--rule); }
+  dl.status div:first-child { border-left: none; }
+  dt { font-size: 12px; color: var(--muted); }
+  dd { margin: 2px 0 0; font-size: 18px; font-variant-numeric: tabular-nums; }
+
+  .source { border-top: 1px solid #000; padding: 14px 0 18px; }
+  .source:first-of-type { border-top: none; padding-top: 0; }
+  .source-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .source.disabled .source-body { display: none; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; }
+  details .grid { margin-top: 10px; }
+
+  .grid { display: grid; grid-template-columns: 11em 1fr; gap: 10px 16px; align-items: start; }
+  .grid > .label { padding-top: 7px; }
+  .range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row { margin-bottom: 14px; }
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+  .savebar {
+    position: sticky; bottom: 0; background: var(--paper); border-top: var(--rule);
+    margin-top: 32px; padding: 12px 0; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .msg { font-size: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-size: 12px; font-weight: 400; color: var(--muted); border-bottom: var(--rule); padding: 4px 8px 4px 0; }
+  td { border-bottom: 1px solid #000; padding: 6px 8px 6px 0; vertical-align: top; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td .src { display: block; }
+  .table-wrap { overflow-x: auto; margin-top: 12px; }
+
+  .log {
+    border: var(--rule); height: 260px; overflow-y: auto; padding: 8px 10px; margin: 0;
+    white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+  }
+  footer { margin-top: 40px; font-size: 12px; color: var(--muted); border-top: var(--rule); padding-top: 12px; }
+  footer .disclaimer { font-size: 13px; max-width: 60ch; margin-bottom: 8px; }
+
+  .seg { display: inline-flex; border: var(--rule); }
+  .seg label { display: block; }
+  .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .seg span { display: block; padding: 5px 12px; font-size: 14px; cursor: pointer; border-left: var(--rule); }
+  .seg label:first-child span { border-left: none; }
+  .seg input:checked + span { background: var(--ink); color: var(--paper); }
+  .seg input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .warn { border: var(--rule); padding: 8px 10px; font-size: 14px; font-weight: 700; margin: 12px 0 0; }
+  .shot { display: block; max-width: 100%; max-height: 420px; margin-top: 12px; border: var(--rule); }
+  .checks label { display: block; margin-bottom: 4px; }
+  select {
+    font: inherit; color: var(--ink); background: var(--paper);
+    border: var(--rule); border-radius: 0; padding: 6px 8px;
+  }
+  input[type="date"] { font: inherit; color: var(--ink); background: var(--paper); border: var(--rule); border-radius: 0; padding: 5px 8px; }
+  h3.sub { margin: 24px 0 10px; }
+
+  .stopped main > :not(.stopped-msg) { display: none; }
+  .stopped-msg { display: none; }
+  .stopped .stopped-msg { display: block; }
+
+  @media (max-width: 560px) {
+    dl.status { grid-template-columns: 1fr 1fr; }
+    dl.status div:nth-child(3) { border-left: none; }
+    dl.status div:nth-child(n+3) { border-top: var(--rule); }
+    .grid { grid-template-columns: 1fr; gap: 4px; }
+    .grid > .label { padding-top: 8px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="stopped-msg">
+    <h1>Boligvagten</h1>
+    <p style="margin-top:16px" data-i18n="stopped">Boligvagten has stopped. You can close this tab.</p>
+  </div>
+
+  <header>
+    <h1>Boligvagten</h1>
+    <div class="controls">
+      <span class="state" id="state" data-i18n="running">Running</span>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="da" aria-pressed="false">DA</button>
+      </div>
+      <button type="button" id="stop" data-i18n="stop">Stop</button>
+    </div>
+  </header>
+  <p class="note" data-i18n="tabNote">Alerts arrive only while this tab is open. Closing it stops Boligvagten; your settings are kept.</p>
+  <p class="err" id="fatal"></p>
+
+  <section>
+    <h2 data-i18n="status">Status</h2>
+    <dl class="status">
+      <div><dt data-i18n="lastCheck">Last check</dt><dd id="st-last">–</dd></div>
+      <div><dt data-i18n="newLast">New in last check</dt><dd id="st-new">–</dd></div>
+      <div><dt data-i18n="seen">Listings seen</dt><dd id="st-seen">–</dd></div>
+      <div><dt data-i18n="nextCheck">Next check</dt><dd id="st-next">–</dd></div>
+    </dl>
+  </section>
+
+  <form id="form" novalidate>
+    <section>
+      <h2 data-i18n="searches">Searches</h2>
+      <p class="hint" data-i18n="searchesHint">The address of a search page is the search: city, price and size are part of it. Set your search on the site, copy the address from the browser, and paste it here. One address per line.</p>
+      <div id="sources"></div>
+    </section>
+
+    <section>
+      <h2 data-i18n="filters">Filters</h2>
+      <p class="hint" data-i18n="filtersHint">Applied to every search. Leave a field empty to switch it off. Listings with an unknown value are kept.</p>
+      <div id="filters"></div>
+    </section>
+
+    <section>
+      <h2 data-i18n="alerts">Phone alerts</h2>
+      <div class="row">
+        <label><input type="checkbox" id="ntfy-enabled"><span data-i18n="ntfyEnabled">Send alerts to my phone with ntfy</span></label>
+      </div>
+      <div id="ntfy-body">
+        <ol class="row" style="padding-left:1.2em;margin:0 0 14px">
+          <li><span data-i18n="step1">Install the free ntfy app:</span> <a id="app-ios" target="_blank" rel="noopener">iPhone</a>, <a id="app-android" target="_blank" rel="noopener">Android</a>.</li>
+          <li><span data-i18n="step2">In the app, tap + and subscribe to this topic:</span> <code id="topic-show"></code></li>
+          <li><span data-i18n="step3">Press "Send test". The message should appear on your phone.</span></li>
+        </ol>
+        <div class="grid">
+          <span class="label" data-i18n="topic">Topic</span>
+          <div>
+            <input type="text" class="mono" id="ntfy-topic" data-field="NTFY.topic" autocomplete="off" spellcheck="false">
+            <span class="hint" data-i18n="topicHint">Keep it secret. Anyone who knows it can read your alerts.</span>
+            <span class="err"></span>
+          </div>
+          <span class="label" data-i18n="server">Server</span>
+          <div>
+            <input type="text" class="mono" id="ntfy-server" data-field="NTFY.server" autocomplete="off" spellcheck="false">
+            <span class="err"></span>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" id="test" data-i18n="sendTest">Send test</button>
+          <button type="button" id="newtopic" data-i18n="newTopic">New topic</button>
+          <span class="msg" id="alert-msg" role="status"></span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:20px">
+        <label><input type="checkbox" id="desktop"><span data-i18n="desktop">Also show a notification on this computer (macOS)</span></label>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="polling">Checking</h2>
+      <div class="grid">
+        <span class="label" data-i18n="interval">Interval</span>
+        <div>
+          <div class="range">
+            <input type="text" inputmode="numeric" class="num" id="poll-min" data-field="POLL_MIN_SECONDS">
+            <span data-i18n="to">to</span>
+            <input type="text" inputmode="numeric" class="num" id="poll-max" data-field="POLL_MAX_SECONDS">
+            <span data-i18n="seconds">seconds between checks</span>
+          </div>
+          <span class="hint" id="poll-hint"></span>
+          <span class="err" data-for="POLL_MIN_SECONDS"></span>
+          <span class="err" data-for="POLL_MAX_SECONDS"></span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="contactTitle">Auto-contact</h2>
+      <p class="hint" data-i18n="contactHint">Fills in the landlord's contact form the moment a new listing appears. Test only fills it in and saves a picture of it; nothing is sent.</p>
+      <div id="contact-sites"></div>
+      <p class="warn" id="send-warning" hidden data-i18n="sendWarning">Send is on: a real message goes out in your name to every new listing that matches your searches.</p>
+      <p class="hint" id="browser-state" style="margin-top:12px"></p>
+
+      <h3 class="sub" data-i18n="yourDetails">Your details</h3>
+      <div class="grid">
+        <span class="label" data-i18n="cName">Name</span>
+        <div><input type="text" data-field="CONTACT.name" autocomplete="name"><span class="err"></span></div>
+        <span class="label" data-i18n="cEmail">Email</span>
+        <div><input type="text" data-field="CONTACT.email" autocomplete="email" spellcheck="false"><span class="err"></span></div>
+        <span class="label" data-i18n="cPhone">Phone</span>
+        <div><input type="text" data-field="CONTACT.phone" autocomplete="tel" inputmode="tel"><span class="hint" data-i18n="cPhoneHint">Kereby has no phone field; put it in your message.</span><span class="err"></span></div>
+        <span class="label" data-i18n="cMessage">Message</span>
+        <div><textarea data-field="CONTACT.message" rows="8" style="font-family:var(--sans);font-size:15px"></textarea><span class="hint" data-i18n="cMessageHint">Sent to every landlord. Replace everything in angle brackets, like &lt;navn&gt;.</span><span class="err"></span></div>
+        <span class="label" data-i18n="cBirth">Birthdate (CEJ)</span>
+        <div><input type="date" data-field="CONTACT.birthdate"><span class="err"></span></div>
+        <span class="label" data-i18n="cWho">Who is moving (CEJ)</span>
+        <div><select data-field="CONTACT.hvem"></select><span class="err"></span></div>
+        <span class="label" data-i18n="cJob">Occupation (CEJ)</span>
+        <div><select data-field="CONTACT.beskaeftigelse"></select><span class="err"></span></div>
+        <span class="label" data-i18n="cMore">Also tick (CEJ)</span>
+        <div><div class="checks" id="cej-detaljer" data-field="CONTACT.detaljer"></div><span class="err"></span></div>
+      </div>
+
+      <h3 class="sub" data-i18n="recent">Recent</h3>
+      <p class="hint" id="recent-empty" data-i18n="recentEmpty">No listings have been contacted yet.</p>
+      <div class="table-wrap" id="recent-wrap" hidden>
+        <table>
+          <thead><tr>
+            <th data-i18n="colWhen">When</th>
+            <th data-i18n="colAddress">Address</th>
+            <th data-i18n="colResult">Result</th>
+          </tr></thead>
+          <tbody id="recent-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="savebar">
+      <button type="submit" id="save" data-i18n="save">Save</button>
+      <span class="msg" id="save-msg" role="status"></span>
+    </div>
+  </form>
+
+  <section>
+    <h2 data-i18n="searchNow">Search now</h2>
+    <p class="hint" data-i18n="searchNowHint">Shows everything that matches your saved searches and filters right now.</p>
+    <div class="actions">
+      <button type="button" id="search" data-i18n="searchNow">Search now</button>
+      <span class="msg" id="search-msg" role="status"></span>
+    </div>
+    <div class="table-wrap" id="results" hidden>
+      <table>
+        <thead><tr>
+          <th data-i18n="colAddress">Address</th>
+          <th class="n" data-i18n="colRooms">Rooms</th>
+          <th class="n">m²</th>
+          <th class="n" data-i18n="colPrice">Price</th>
+        </tr></thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-i18n="log">Log</h2>
+    <pre class="log" id="log" aria-live="off"></pre>
+  </section>
+
+  <footer>
+    <p class="disclaimer" data-i18n="disclaimer"></p>
+    <span id="version"></span>
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------- text
+  var T = {
+    en: {
+      running: "Running", stoppedState: "Stopped", stop: "Stop",
+      stopped: "Boligvagten has stopped. You can close this tab.",
+      tabNote: "Alerts arrive only while this tab is open. Closing it stops Boligvagten; your settings are kept.",
+      status: "Status", lastCheck: "Last check", newLast: "New in last check",
+      seen: "Listings seen", nextCheck: "Next check", offline: "Offline",
+      searches: "Searches",
+      searchesHint: "The address of a search page is the search: city, price and size are part of it. Set your search on the site, copy the address from the browser, and paste it here. One address per line.",
+      enabled: "On", addresses: "Search addresses", ownFilters: "Own filters for this source",
+      filters: "Filters",
+      filtersHint: "Applied to every search. Leave a field empty to switch it off. Listings with an unknown value are kept.",
+      price: "Price (DKK)", priceHint: "Monthly rent, or cash price for homes for sale. Watching both? Set prices under each source’s own filters instead.",
+      rooms: "Rooms", size: "Size (m²)", fee: "Ejerudgift (DKK/month)", feeHint: "Homes for sale only.",
+      min: "min", max: "max", to: "to",
+      exclude: "Leave out words", excludeHint: "Drops a listing if any of these appear in its title or address. Separate with commas.",
+      include: "Must contain", includeHint: "Keeps only listings with at least one of these in the title or address.",
+      describe: "Description must contain", describeHint: "Checked against the full listing text, for example altan, badekar. Costs one page load per new listing.",
+      alerts: "Phone alerts", ntfyEnabled: "Send alerts to my phone with ntfy",
+      step1: "Install the free ntfy app:", step2: "In the app, tap + and subscribe to this topic:",
+      step3: "Press “Send test”. The message should appear on your phone.",
+      topic: "Topic", topicHint: "Keep it secret. Anyone who knows it can read your alerts.",
+      server: "Server", sendTest: "Send test", newTopic: "New topic",
+      testOk: "Sent. Check your phone.", testFail: "Could not send. Check the topic and your connection.",
+      testUnsaved: "Save first, then send a test.",
+      topicNew: "New topic saved. Subscribe to it in the app again.",
+      desktop: "Also show a notification on this computer (macOS)",
+      polling: "Checking", interval: "Interval", seconds: "seconds between checks",
+      pollHint: "Random in this range. The minimum is {n} seconds, to be polite to the sites.",
+      save: "Save", saved: "Saved.", unsaved: "Unsaved changes.", fixErrors: "Fix the marked field.",
+      searchNow: "Search now", searchNowHint: "Shows everything that matches your saved searches and filters right now.",
+      searching: "Searching…", found: "{n} listings.", none: "Nothing matches right now.",
+      searchFailed: "The search failed: {d}",
+      colAddress: "Address", colRooms: "Rooms", colPrice: "Price",
+      perMonth: "/month", log: "Log", version: "Version {v}",
+      disclaimer: "Boligvagten polls publicly available listing pages on your behalf, at a human-ish pace, for personal use. Respect the sites: keep polling intervals reasonable, don't run multiple aggressive instances, and check the terms of service of the sites you enable. This project is not affiliated with any of the listed sites.",
+      noToken: "Open Boligvagten with the link shown in the terminal window.",
+      err_not_a_number: "Enter a whole number.", err_negative: "Must be 0 or more.",
+      err_min_above_max: "The minimum is above the maximum.",
+      err_poll_too_fast: "Must be at least {n} seconds.",
+      err_bad_url: "Every line must be a web address starting with https://",
+      err_no_url: "Add at least one address, or switch this source off.",
+      err_bad_topic: "Use only letters, digits, - and _ (at most 64).",
+      err_unknown: "This value was not accepted.",
+      contactTitle: "Auto-contact",
+      contactHint: "Fills in the landlord’s contact form the moment a new listing appears. Test only fills it in and saves a picture of it; nothing is sent.",
+      mode_off: "Off", mode_test: "Test only", mode_send: "Send",
+      tryIt: "Try it now", trying: "Filling in the form on a current listing… (10–30 s)",
+      tryFilled: "Filled in on {a}. Nothing was sent. This is what it would send:",
+      tryClosed: "The current listings are all closed for inquiries. Try again later.",
+      tryNone: "There are no listings right now to try it on.",
+      tryFailed: "Could not fill in the form: {d}",
+      sendWarning: "Send is on: a real message goes out in your name to every new listing that matches your searches.",
+      browserReady: "Browser: ready.",
+      browserInstalling: "Browser: downloading a temporary copy (about 150 MB, up to a minute). It is deleted when Boligvagten stops.",
+      browserFailed: "Browser: not available. {d}",
+      browserLater: "Browser: prepared after you save.",
+      yourDetails: "Your details", cName: "Name", cEmail: "Email", cPhone: "Phone",
+      cPhoneHint: "Kereby has no phone field; put it in your message.",
+      cMessage: "Message", cMessageHint: "Sent to every landlord. Replace everything in angle brackets, like <navn>.",
+      cBirth: "Birthdate (CEJ)", cWho: "Who is moving (CEJ)", cJob: "Occupation (CEJ)", cMore: "Also tick (CEJ)",
+      recent: "Recent", recentEmpty: "No listings have been contacted yet.",
+      colWhen: "When", colResult: "Result",
+      res_sent: "Sent", res_filled: "Filled in (test)", res_closed: "Closed for inquiries",
+      st_pending: "Waiting", st_in_progress: "Working…", st_failed: "Failed",
+      st_needs_review: "Check by hand", st_cancelled: "Cancelled", st_expired: "Too old, skipped",
+      err_needed_to_send: "Needed before Send can be switched on.",
+      err_bad_date: "Use the date picker.", err_bad_choice: "Pick one of the options.",
+      hint_cej: "On udlejning.cej.dk/find-bolig/overblik, set your filters, copy the address and add &_data=routes%2Fsearch%2Flayout to the end.",
+      hint_cityapartment: "On cityapartment.dk/apartment-rentals-copenhagen, set price and size, then copy the address.",
+      hint_boligportal: "Open your city’s page, for example boligportal.dk/lejeboliger/aarhus/, add filters on the site and copy the address.",
+      hint_kereby: "Kereby’s public listing feed. Leave the address as it is and use this source’s own filters.",
+      hint_boligsiden: "Homes for sale. Edit the parameters by hand: municipalities or zipCodes, priceMax, numberOfRoomsMin, areaMin. Keep sortBy=daysListed&sortAscending=true."
+    },
+    da: {
+      running: "Kører", stoppedState: "Stoppet", stop: "Stop",
+      stopped: "Boligvagten er stoppet. Du kan lukke fanen.",
+      tabNote: "Du får kun besked, mens denne fane er åben. Lukker du den, stopper Boligvagten; dine indstillinger gemmes.",
+      status: "Status", lastCheck: "Seneste tjek", newLast: "Nye ved seneste tjek",
+      seen: "Sete boliger", nextCheck: "Næste tjek", offline: "Offline",
+      searches: "Søgninger",
+      searchesHint: "Adressen på en søgeside er selve søgningen: by, pris og størrelse indgår i den. Lav din søgning på siden, kopiér adressen fra browseren og indsæt den her. Én adresse per linje.",
+      enabled: "Til", addresses: "Søgeadresser", ownFilters: "Egne filtre for denne kilde",
+      filters: "Filtre",
+      filtersHint: "Gælder for alle søgninger. Lad et felt stå tomt for at slå det fra. Boliger med en ukendt værdi bliver vist.",
+      price: "Pris (kr.)", priceHint: "Månedlig husleje, eller kontantpris for boliger til salg. Følger du begge dele? Sæt priser under hver kildes egne filtre i stedet.",
+      rooms: "Værelser", size: "Størrelse (m²)", fee: "Ejerudgift (kr./md.)", feeHint: "Kun boliger til salg.",
+      min: "min", max: "maks", to: "til",
+      exclude: "Udelad ord", excludeHint: "Fjerner en bolig, hvis et af ordene står i titel eller adresse. Adskil med komma.",
+      include: "Skal indeholde", includeHint: "Viser kun boliger med mindst et af ordene i titel eller adresse.",
+      describe: "Beskrivelse skal indeholde", describeHint: "Tjekkes mod hele boligteksten, fx altan, badekar. Koster én sidevisning per ny bolig.",
+      alerts: "Besked på telefonen", ntfyEnabled: "Send besked til min telefon med ntfy",
+      step1: "Installér den gratis ntfy-app:", step2: "Tryk + i appen og abonnér på dette emne:",
+      step3: "Tryk „Send test“. Beskeden skulle gerne dukke op på telefonen.",
+      topic: "Emne", topicHint: "Hold det hemmeligt. Alle, der kender det, kan læse dine beskeder.",
+      server: "Server", sendTest: "Send test", newTopic: "Nyt emne",
+      testOk: "Sendt. Kig på telefonen.", testFail: "Kunne ikke sende. Tjek emnet og din forbindelse.",
+      testUnsaved: "Gem først, og send så en test.",
+      topicNew: "Nyt emne gemt. Abonnér på det i appen igen.",
+      desktop: "Vis også en besked på denne computer (macOS)",
+      polling: "Tjek", interval: "Interval", seconds: "sekunder mellem tjek",
+      pollHint: "Tilfældigt inden for intervallet. Mindst {n} sekunder af hensyn til siderne.",
+      save: "Gem", saved: "Gemt.", unsaved: "Ikke gemte ændringer.", fixErrors: "Ret det markerede felt.",
+      searchNow: "Søg nu", searchNowHint: "Viser alt, der lige nu matcher dine gemte søgninger og filtre.",
+      searching: "Søger…", found: "{n} boliger.", none: "Intet matcher lige nu.",
+      searchFailed: "Søgningen fejlede: {d}",
+      colAddress: "Adresse", colRooms: "Vær.", colPrice: "Pris",
+      perMonth: "/md.", log: "Log", version: "Version {v}",
+      disclaimer: "Boligvagten henter offentligt tilgængelige boligsider på dine vegne, i et menneskeligt tempo, til personligt brug. Tag hensyn til siderne: hold intervallerne mellem tjek rimelige, kør ikke flere aggressive kopier samtidig, og læs vilkårene for de sider, du slår til. Projektet er ikke tilknyttet nogen af de nævnte sider.",
+      noToken: "Åbn Boligvagten med linket i terminalvinduet.",
+      err_not_a_number: "Skriv et helt tal.", err_negative: "Skal være 0 eller mere.",
+      err_min_above_max: "Minimum er højere end maksimum.",
+      err_poll_too_fast: "Skal være mindst {n} sekunder.",
+      err_bad_url: "Hver linje skal være en webadresse, der starter med https://",
+      err_no_url: "Tilføj mindst én adresse, eller slå kilden fra.",
+      err_bad_topic: "Brug kun bogstaver, tal, - og _ (højst 64).",
+      err_unknown: "Værdien blev ikke accepteret.",
+      contactTitle: "Auto-kontakt",
+      contactHint: "Udfylder udlejerens kontaktformular, så snart en ny bolig dukker op. Kun test udfylder den og gemmer et billede af den; intet bliver sendt.",
+      mode_off: "Fra", mode_test: "Kun test", mode_send: "Send",
+      tryIt: "Prøv nu", trying: "Udfylder formularen på en aktuel bolig… (10–30 sek.)",
+      tryFilled: "Udfyldt på {a}. Intet blev sendt. Sådan ville den blive sendt:",
+      tryClosed: "De aktuelle boliger er alle lukket for henvendelser. Prøv igen senere.",
+      tryNone: "Der er ingen boliger lige nu at prøve på.",
+      tryFailed: "Kunne ikke udfylde formularen: {d}",
+      sendWarning: "Send er slået til: en rigtig besked sendes i dit navn til hver ny bolig, der matcher dine søgninger.",
+      browserReady: "Browser: klar.",
+      browserInstalling: "Browser: henter en midlertidig kopi (ca. 150 MB, op til et minut). Den slettes, når Boligvagten stopper.",
+      browserFailed: "Browser: ikke tilgængelig. {d}",
+      browserLater: "Browser: gøres klar, når du gemmer.",
+      yourDetails: "Dine oplysninger", cName: "Navn", cEmail: "Email", cPhone: "Telefon",
+      cPhoneHint: "Kereby har intet telefonfelt; skriv det i din besked.",
+      cMessage: "Besked", cMessageHint: "Sendes til alle udlejere. Erstat alt i vinkelparenteser, fx <navn>.",
+      cBirth: "Fødselsdato (CEJ)", cWho: "Hvem flytter ind (CEJ)", cJob: "Beskæftigelse (CEJ)", cMore: "Sæt også kryds (CEJ)",
+      recent: "Seneste", recentEmpty: "Der er ikke kontaktet nogen boliger endnu.",
+      colWhen: "Hvornår", colResult: "Resultat",
+      res_sent: "Sendt", res_filled: "Udfyldt (test)", res_closed: "Lukket for henvendelser",
+      st_pending: "Venter", st_in_progress: "Arbejder…", st_failed: "Fejlede",
+      st_needs_review: "Tjek selv", st_cancelled: "Annulleret", st_expired: "For gammel, sprunget over",
+      err_needed_to_send: "Skal udfyldes, før Send kan slås til.",
+      err_bad_date: "Brug datovælgeren.", err_bad_choice: "Vælg en af mulighederne.",
+      hint_cej: "På udlejning.cej.dk/find-bolig/overblik: sæt dine filtre, kopiér adressen og tilføj &_data=routes%2Fsearch%2Flayout til sidst.",
+      hint_cityapartment: "På cityapartment.dk/apartment-rentals-copenhagen: sæt pris og størrelse, og kopiér adressen.",
+      hint_boligportal: "Åbn siden for din by, fx boligportal.dk/lejeboliger/aarhus/, tilføj filtre på siden og kopiér adressen.",
+      hint_kereby: "Kerebys offentlige boligliste. Lad adressen stå og brug kildens egne filtre.",
+      hint_boligsiden: "Boliger til salg. Ret parametrene i hånden: municipalities eller zipCodes, priceMax, numberOfRoomsMin, areaMin. Behold sortBy=daysListed&sortAscending=true."
+    }
+  };
+
+  var lang = "en";
+  try {
+    lang = localStorage.getItem("boligvagten.lang") || "";
+  } catch (e) { lang = ""; }
+  if (lang !== "en" && lang !== "da") {
+    lang = /^da\b/i.test(navigator.language || "") ? "da" : "en";
+  }
+
+  function t(key, vars) {
+    var s = (T[lang] && T[lang][key]) || T.en[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (k) { s = s.replace("{" + k + "}", vars[k]); });
+    }
+    return s;
+  }
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = t(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach(function (el) {
+      el.placeholder = t(el.getAttribute("data-i18n-ph"));
+    });
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang));
+    });
+    if (state) {
+      $("poll-hint").textContent = t("pollHint", { n: state.min_poll_seconds });
+      renderContactStatus(state.status);
+      $("version").textContent = t("version", { v: state.version });
+      renderStatus(state.status);
+      document.querySelectorAll(".err[data-code]").forEach(function (el) {
+        el.textContent = errText(el.getAttribute("data-code"));
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- helpers
+  function $(id) { return document.getElementById(id); }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === "text") node.textContent = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+
+  function kr(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "."); }
+
+  function clock(iso) {
+    if (!iso) return "–";
+    var d = new Date(iso);
+    if (isNaN(d)) return "–";
+    return d.toLocaleTimeString(lang === "da" ? "da-DK" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function safeHref(url) { return /^https?:\/\//i.test(url || "") ? url : null; }
+
+  // ---------------------------------------------------------------- token + API
+  var params = new URLSearchParams(location.search);
+  var token = params.get("t");
+  try {
+    if (token) sessionStorage.setItem("boligvagten.token", token);
+    else token = sessionStorage.getItem("boligvagten.token");
+  } catch (e) { /* storage blocked: keep the token in the URL */ }
+  if (params.get("t")) {
+    try { if (sessionStorage.getItem("boligvagten.token") === token) history.replaceState(null, "", "/"); } catch (e) {}
+  }
+
+  function api(path, body) {
+    var opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Token": token || "" } };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        return { ok: r.ok, status: r.status, data: data };
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- form
+  var state = null;
+  var dirty = false;
+
+  var FILTER_RANGES = [
+    ["price", "min_price_dkk", "max_price_dkk", "priceHint"],
+    ["rooms", "min_rooms", "max_rooms", null],
+    ["size", "min_size_m2", "max_size_m2", null],
+    ["fee", "min_monthly_fee_dkk", "max_monthly_fee_dkk", "feeHint"]
+  ];
+  var FILTER_WORDS = [
+    ["exclude", "exclude_keywords", "excludeHint"],
+    ["include", "include_keywords", "includeHint"],
+    ["describe", "description_keywords", "describeHint"]
+  ];
+
+  function numInput(field, value, placeholderKey) {
+    return el("input", {
+      type: "text", inputmode: "numeric", "class": "num", "data-field": field,
+      "data-i18n-ph": placeholderKey, placeholder: t(placeholderKey),
+      value: value === null || value === undefined ? "" : String(value)
+    });
+  }
+
+  function filterGrid(prefix, f) {
+    var grid = el("div", { "class": "grid" });
+    FILTER_RANGES.forEach(function (r) {
+      grid.appendChild(el("span", { "class": "label", "data-i18n": r[0], text: t(r[0]) }));
+      grid.appendChild(el("div", {}, [
+        el("div", { "class": "range" }, [
+          numInput(prefix + "." + r[1], f[r[1]], "min"),
+          el("span", { "data-i18n": "to", text: t("to") }),
+          numInput(prefix + "." + r[2], f[r[2]], "max")
+        ]),
+        r[3] ? el("span", { "class": "hint", "data-i18n": r[3], text: t(r[3]) }) : null,
+        el("span", { "class": "err", "data-for": prefix + "." + r[1] }),
+        el("span", { "class": "err", "data-for": prefix + "." + r[2] })
+      ]));
+    });
+    FILTER_WORDS.forEach(function (w) {
+      grid.appendChild(el("span", { "class": "label", "data-i18n": w[0], text: t(w[0]) }));
+      grid.appendChild(el("div", {}, [
+        el("input", { type: "text", "data-field": prefix + "." + w[1], value: (f[w[1]] || []).join(", "), spellcheck: "false" }),
+        el("span", { "class": "hint", "data-i18n": w[2], text: t(w[2]) }),
+        el("span", { "class": "err", "data-for": prefix + "." + w[1] })
+      ]));
+    });
+    return grid;
+  }
+
+  function readFilters(prefix) {
+    var out = {};
+    FILTER_RANGES.forEach(function (r) {
+      out[r[1]] = readInt(prefix + "." + r[1]);
+      out[r[2]] = readInt(prefix + "." + r[2]);
+    });
+    FILTER_WORDS.forEach(function (w) {
+      out[w[1]] = field(prefix + "." + w[1]).value.split(",")
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return s; });
+    });
+    return out;
+  }
+
+  function autosize(area) {
+    area.style.height = "auto";
+    area.style.height = (area.scrollHeight + 2) + "px";
+  }
+
+  function field(path) { return document.querySelector('[data-field="' + path + '"]'); }
+
+  function ClientError(path, code) { this.field = path; this.code = code; }
+
+  function readInt(path) {
+    var raw = field(path).value.replace(/[.\s]/g, "");
+    if (raw === "") return null;
+    if (!/^\d+$/.test(raw)) throw new ClientError(path, "not_a_number");
+    return parseInt(raw, 10);
+  }
+
+  function renderSources(s) {
+    var box = $("sources");
+    box.textContent = "";
+    state.sources.forEach(function (src) {
+      var conf = s.SOURCES[src.key];
+      var prefix = "SOURCES." + src.key;
+      var toggle = el("input", { type: "checkbox", "data-field": prefix + ".enabled" });
+      toggle.checked = conf.enabled;
+      var wrap = el("div", { "class": "source" + (conf.enabled ? "" : " disabled") }, [
+        el("div", { "class": "source-head" }, [
+          el("h3", { text: src.label }),
+          el("label", {}, [toggle, el("span", { "data-i18n": "enabled", text: t("enabled") })])
+        ]),
+        el("div", { "class": "source-body" }, [
+          el("p", { "class": "hint", "data-i18n": "hint_" + src.key, text: t("hint_" + src.key) }),
+          el("textarea", { "data-field": prefix + ".urls", rows: String(Math.max(2, conf.urls.length + 1)), spellcheck: "false", "aria-label": src.label + " – " + t("addresses") }),
+          el("span", { "class": "err", "data-for": prefix + ".urls" }),
+          el("details", {}, [
+            el("summary", { "data-i18n": "ownFilters", text: t("ownFilters") }),
+            filterGrid(prefix + ".filters", conf.filters)
+          ])
+        ])
+      ]);
+      box.appendChild(wrap);
+      var urls = field(prefix + ".urls");
+      urls.value = conf.urls.join("\n");
+      urls.addEventListener("input", function () { autosize(urls); });
+      toggle.addEventListener("change", function () {
+        wrap.classList.toggle("disabled", !toggle.checked);
+        autosize(urls);
+      });
+    });
+  }
+
+  function renderForm(s) {
+    renderSources(s);
+    var fbox = $("filters");
+    fbox.textContent = "";
+    fbox.appendChild(filterGrid("FILTERS", s.FILTERS));
+    $("ntfy-enabled").checked = !!s.NTFY.enabled;
+    $("ntfy-topic").value = s.NTFY.topic || "";
+    $("ntfy-server").value = s.NTFY.server || "";
+    $("topic-show").textContent = s.NTFY.topic || "";
+    $("ntfy-body").hidden = !s.NTFY.enabled;
+    $("desktop").checked = !!s.MACOS_NOTIFICATION;
+    $("poll-min").value = s.POLL_MIN_SECONDS;
+    $("poll-max").value = s.POLL_MAX_SECONDS;
+    renderContact(s.CONTACT);
+    $("app-ios").href = state.apps.ios;
+    $("app-android").href = state.apps.android;
+    clearErrors();
+    setDirty(false);
+    document.querySelectorAll("textarea").forEach(autosize);
+  }
+
+  function readForm() {
+    var s = JSON.parse(JSON.stringify(state.settings));
+    s.POLL_MIN_SECONDS = readInt("POLL_MIN_SECONDS");
+    s.POLL_MAX_SECONDS = readInt("POLL_MAX_SECONDS");
+    if (s.POLL_MIN_SECONDS === null) throw new ClientError("POLL_MIN_SECONDS", "not_a_number");
+    if (s.POLL_MAX_SECONDS === null) throw new ClientError("POLL_MAX_SECONDS", "not_a_number");
+    s.FILTERS = readFilters("FILTERS");
+    state.sources.forEach(function (src) {
+      var prefix = "SOURCES." + src.key;
+      var conf = s.SOURCES[src.key];
+      conf.enabled = field(prefix + ".enabled").checked;
+      conf.urls = field(prefix + ".urls").value.split("\n")
+        .map(function (u) { return u.trim(); })
+        .filter(function (u) { return u; });
+      conf.filters = readFilters(prefix + ".filters");
+    });
+    s.NTFY.enabled = $("ntfy-enabled").checked;
+    s.NTFY.topic = $("ntfy-topic").value.trim();
+    s.NTFY.server = $("ntfy-server").value.trim();
+    s.MACOS_NOTIFICATION = $("desktop").checked;
+    readContact(s.CONTACT);
+    return s;
+  }
+
+  function errText(code) {
+    var key = "err_" + code;
+    if (!T.en[key]) key = "err_unknown";
+    return t(key, { n: state ? state.min_poll_seconds : 30 });
+  }
+
+  function clearErrors() {
+    document.querySelectorAll("form .err").forEach(function (e) {
+      e.textContent = "";
+      e.removeAttribute("data-code");
+    });
+    document.querySelectorAll(".invalid").forEach(function (e) { e.classList.remove("invalid"); });
+  }
+
+  function showError(path, code) {
+    var input = field(path);
+    var slot = document.querySelector('.err[data-for="' + path + '"]');
+    if (!slot && input) slot = input.parentNode.querySelector(".err");
+    if (slot) {
+      slot.setAttribute("data-code", code);
+      slot.textContent = errText(code);
+    }
+    if (input) {
+      input.classList.add("invalid");
+      var details = input.closest("details");
+      if (details) details.open = true;
+      var src = input.closest(".source");
+      if (src && src.classList.contains("disabled") && path.slice(-8) !== ".enabled") {
+        src.classList.remove("disabled");
+      }
+      input.focus();
+    }
+    $("save-msg").textContent = t("fixErrors");
+  }
+
+  function setDirty(v) {
+    dirty = v;
+    $("save-msg").textContent = v ? t("unsaved") : "";
+  }
+
+  // ---------------------------------------------------------------- auto-contact
+  var MODES = ["off", "test", "send"];
+
+  function modeOf(conf) {
+    if (!conf || !conf.auto_contact) return "off";
+    return conf.live_send ? "send" : "test";
+  }
+
+  function renderContact(c) {
+    var box = $("contact-sites");
+    box.textContent = "";
+    state.contact.sites.forEach(function (site) {
+      var seg = el("div", { "class": "seg", role: "radiogroup", "aria-label": site.label });
+      MODES.forEach(function (m) {
+        var input = el("input", { type: "radio", name: "mode-" + site.key, value: m });
+        input.checked = modeOf(c.sites[site.key]) === m;
+        input.addEventListener("change", updateSendWarning);
+        seg.appendChild(el("label", {}, [input, el("span", { "data-i18n": "mode_" + m, text: t("mode_" + m) })]));
+      });
+      var btn = el("button", { type: "button", "data-i18n": "tryIt", text: t("tryIt") });
+      var msg = el("span", { "class": "msg", role: "status" });
+      var img = el("img", { "class": "shot", alt: "" });
+      img.hidden = true;
+      btn.addEventListener("click", function () { tryContact(site.key, btn, msg, img); });
+      box.appendChild(el("div", { "class": "source" }, [
+        el("div", { "class": "source-head" }, [el("h3", { text: site.label }), seg]),
+        el("div", { "class": "actions" }, [btn, msg]),
+        img
+      ]));
+    });
+    field("CONTACT.name").value = c.name || "";
+    field("CONTACT.email").value = c.email || "";
+    field("CONTACT.phone").value = c.phone || "";
+    field("CONTACT.message").value = c.message || "";
+    field("CONTACT.birthdate").value = c.birthdate || "";
+    fillSelect(field("CONTACT.hvem"), state.contact.hvem, c.hvem);
+    fillSelect(field("CONTACT.beskaeftigelse"), state.contact.beskaeftigelse, c.beskaeftigelse);
+    var checks = $("cej-detaljer");
+    checks.textContent = "";
+    state.contact.detaljer.forEach(function (d) {
+      var cb = el("input", { type: "checkbox", value: d });
+      cb.checked = (c.detaljer || []).indexOf(d) >= 0;
+      checks.appendChild(el("label", {}, [cb, el("span", { text: d })]));
+    });
+    updateSendWarning();
+  }
+
+  function fillSelect(select, options, value) {
+    select.textContent = "";
+    options.forEach(function (o) {
+      var opt = el("option", { value: o, text: o });
+      if (o === value) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
+  function readContact(c) {
+    state.contact.sites.forEach(function (site) {
+      var picked = document.querySelector('input[name="mode-' + site.key + '"]:checked');
+      var m = picked ? picked.value : "off";
+      c.sites[site.key] = { auto_contact: m !== "off", live_send: m === "send" };
+    });
+    c.name = field("CONTACT.name").value.trim();
+    c.email = field("CONTACT.email").value.trim();
+    c.phone = field("CONTACT.phone").value.trim();
+    c.message = field("CONTACT.message").value.replace(/\s+$/, "");
+    c.birthdate = field("CONTACT.birthdate").value;
+    c.hvem = field("CONTACT.hvem").value;
+    c.beskaeftigelse = field("CONTACT.beskaeftigelse").value;
+    c.detaljer = Array.prototype.map.call(
+      $("cej-detaljer").querySelectorAll("input:checked"), function (cb) { return cb.value; });
+  }
+
+  function updateSendWarning() {
+    $("send-warning").hidden = !document.querySelector('#contact-sites input[value="send"]:checked');
+  }
+
+  function anyContactOn() {
+    return !!document.querySelector('#contact-sites input:not([value="off"]):checked');
+  }
+
+  function renderContactStatus(st) {
+    if (!st || !state) return;
+    var b = st.browser || {};
+    var line = "";
+    if (b.state === "ready") line = t("browserReady");
+    else if (b.state === "installing") line = t("browserInstalling");
+    else if (b.state === "failed" || b.state === "missing") line = t("browserFailed", { d: b.detail || "" });
+    else if (anyContactOn()) line = t("browserLater");
+    $("browser-state").textContent = line;
+    $("browser-state").hidden = !line;
+
+    var rows = st.actions || [];
+    var body = $("recent-body");
+    body.textContent = "";
+    var labels = {};
+    state.contact.sites.forEach(function (s) { labels[s.key] = s.label; });
+    rows.forEach(function (a) {
+      var href = safeHref(a.url);
+      var name = a.listing.split(":").slice(1).join(":").slice(0, 8);
+      var link = href ? el("a", { href: href, target: "_blank", rel: "noopener noreferrer", text: labels[a.source] || a.source }) : document.createTextNode(labels[a.source] || a.source);
+      body.appendChild(el("tr", {}, [
+        el("td", { text: when(a.when) }),
+        el("td", {}, [link, el("span", { "class": "hint src", text: name })]),
+        el("td", {}, [el("span", { text: resultText(a) }), a.detail ? el("span", { "class": "hint src", text: a.detail }) : null])
+      ]));
+    });
+    $("recent-wrap").hidden = rows.length === 0;
+    $("recent-empty").hidden = rows.length > 0;
+  }
+
+  function when(iso) {
+    if (!iso) return "–";
+    var d = new Date(iso);
+    if (isNaN(d)) return "–";
+    var today = new Date().toDateString() === d.toDateString();
+    return today ? clock(iso) : d.toLocaleDateString(lang === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short" }) + " " + clock(iso).slice(0, 5);
+  }
+
+  function resultText(a) {
+    if (a.status === "completed") return t("res_" + (a.result || "sent"));
+    return t("st_" + a.status);
+  }
+
+  function tryContact(site, btn, msg, img) {
+    if (dirty) { msg.textContent = t("testUnsaved"); return; }
+    btn.disabled = true;
+    img.hidden = true;
+    msg.textContent = t("trying");
+    api("/api/contact-test", { site: site }).then(function (r) {
+      btn.disabled = false;
+      var d = r.data || {};
+      if (!r.ok) { msg.textContent = t("tryFailed", { d: d.detail || r.status }); return; }
+      if (d.code === "filled") {
+        msg.textContent = t("tryFilled", { a: d.address || "" });
+        img.src = "/api/contact-shot?site=" + site + "&t=" + encodeURIComponent(token) + "&v=" + Date.now();
+        img.alt = t("tryFilled", { a: d.address || "" });
+        img.hidden = false;
+      } else if (d.code === "closed") {
+        msg.textContent = t("tryClosed");
+      } else if (d.code === "no_listings") {
+        msg.textContent = t("tryNone");
+      } else if (d.code === "busy") {
+        msg.textContent = t("trying");
+      } else {
+        msg.textContent = t("tryFailed", { d: d.detail || d.code });
+      }
+    }, function () { btn.disabled = false; markStopped(); });
+  }
+
+  // ---------------------------------------------------------------- status + log
+  function renderStatus(st) {
+    if (!st) return;
+    $("st-last").textContent = clock(st.last_check);
+    $("st-new").textContent = st.online === false ? t("offline") : (st.last_new === null || st.last_new === undefined ? "–" : String(st.last_new));
+    $("st-seen").textContent = st.last_check ? kr(st.seen) : "–";
+    $("st-next").textContent = clock(st.next_check);
+    renderContactStatus(st);
+  }
+
+  var logBox = $("log");
+  function appendLog(line) {
+    var atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 24;
+    logBox.appendChild(document.createTextNode(line + "\n"));
+    while (logBox.childNodes.length > 500) logBox.removeChild(logBox.firstChild);
+    if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function markStopped() {
+    document.body.classList.add("stopped");
+    document.title = "Boligvagten – " + t("stoppedState");
+  }
+
+  var events = null;
+  function connect() {
+    events = new EventSource("/api/events?t=" + encodeURIComponent(token));
+    events.addEventListener("log", function (e) { appendLog(JSON.parse(e.data)); });
+    events.addEventListener("status", function (e) {
+      if (state) state.status = JSON.parse(e.data);
+      renderStatus(JSON.parse(e.data));
+    });
+    events.addEventListener("stopped", function () { events.close(); markStopped(); });
+    events.onerror = function () {
+      // EventSource retries by itself; if the server is gone for good, say so.
+      fetch("/api/state", { headers: { "X-Token": token } }).catch(function () {
+        events.close();
+        markStopped();
+      });
+    };
+  }
+
+  // ---------------------------------------------------------------- wiring
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      lang = b.getAttribute("data-lang");
+      try { localStorage.setItem("boligvagten.lang", lang); } catch (e) {}
+      applyLang();
+    });
+  });
+
+  $("form").addEventListener("input", function () { setDirty(true); });
+  $("form").addEventListener("change", function () { setDirty(true); });
+  $("ntfy-enabled").addEventListener("change", function () {
+    $("ntfy-body").hidden = !$("ntfy-enabled").checked;
+  });
+
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    clearErrors();
+    var s;
+    try {
+      s = readForm();
+    } catch (err) {
+      if (err instanceof ClientError) { showError(err.field, err.code); return; }
+      throw err;
+    }
+    $("save").disabled = true;
+    api("/api/settings", s).then(function (r) {
+      $("save").disabled = false;
+      if (r.ok) {
+        state.settings = r.data.settings;
+        renderForm(state.settings);
+        $("save-msg").textContent = t("saved");
+      } else if (r.data && r.data.field) {
+        showError(r.data.field, r.data.error);
+      } else {
+        $("save-msg").textContent = t("err_unknown");
+      }
+    }, function () { $("save").disabled = false; markStopped(); });
+  });
+
+  $("test").addEventListener("click", function () {
+    if (dirty) { $("alert-msg").textContent = t("testUnsaved"); return; }
+    $("test").disabled = true;
+    api("/api/test-notify", {}).then(function (r) {
+      $("test").disabled = false;
+      $("alert-msg").textContent = r.ok && r.data.ok ? t("testOk") : t("testFail");
+    });
+  });
+
+  $("newtopic").addEventListener("click", function () {
+    api("/api/new-topic", {}).then(function (r) {
+      if (!r.ok) return;
+      state.settings = r.data.settings;
+      renderForm(state.settings);
+      $("alert-msg").textContent = t("topicNew");
+    });
+  });
+
+  $("search").addEventListener("click", function () {
+    $("search").disabled = true;
+    $("search-msg").textContent = t("searching");
+    api("/api/search", {}).then(function (r) {
+      $("search").disabled = false;
+      if (!r.ok) {
+        $("search-msg").textContent = t("searchFailed", { d: (r.data && r.data.detail) || r.status });
+        return;
+      }
+      var rows = r.data.listings;
+      var labels = {};
+      state.sources.forEach(function (src) { labels[src.key] = src.label; });
+      var body = $("results-body");
+      body.textContent = "";
+      rows.forEach(function (it) {
+        var href = safeHref(it.url);
+        var addr = href ? el("a", { href: href, target: "_blank", rel: "noopener noreferrer", text: it.address }) : document.createTextNode(it.address);
+        var price = it.price_dkk === null ? "?" : kr(it.price_dkk) + (it.deal === "sale" ? "" : t("perMonth"));
+        body.appendChild(el("tr", {}, [
+          el("td", {}, [addr, el("span", { "class": "hint src", text: labels[it.source] || it.source })]),
+          el("td", { "class": "n", text: it.rooms === null ? "?" : String(it.rooms) }),
+          el("td", { "class": "n", text: it.size_m2 === null ? "?" : String(it.size_m2) }),
+          el("td", { "class": "n", text: price })
+        ]));
+      });
+      $("results").hidden = rows.length === 0;
+      $("search-msg").textContent = rows.length ? t("found", { n: rows.length }) : t("none");
+    }, function () { $("search").disabled = false; markStopped(); });
+  });
+
+  $("stop").addEventListener("click", function () {
+    api("/api/stop", {}).then(markStopped, markStopped);
+  });
+
+  window.addEventListener("resize", function () {
+    document.querySelectorAll("textarea").forEach(autosize);
+  });
+
+  window.addEventListener("beforeunload", function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  // ---------------------------------------------------------------- start
+  applyLang();
+  if (!token) {
+    $("fatal").textContent = t("noToken");
+    return;
+  }
+  api("/api/state").then(function (r) {
+    if (!r.ok) { $("fatal").textContent = t("noToken"); return; }
+    state = r.data;
+    renderForm(state.settings);
+    applyLang();
+    connect();
+  }, markStopped);
+})();
+</script>
+</body>
+</html>

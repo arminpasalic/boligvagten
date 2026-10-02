@@ -17,6 +17,9 @@ when ./config.example.py exists (you're inside a checkout), otherwise in
 
 State (seen_listings.json, contact-form screenshots) always sits next to
 whichever config.py is in use.
+
+The web UI (`--web`) keeps its settings.json and state in the per-user
+directory regardless of the current directory — see web_dir().
 """
 import os
 from pathlib import Path
@@ -60,3 +63,12 @@ def example_file():
         if c.exists():
             return c
     return candidates[1]  # nothing found — let the caller fail with a clear path
+
+
+def web_dir():
+    """Where the web UI keeps settings.json and its state: always the per-user dir.
+
+    Deliberately not the current directory — the downloadable zip is unpacked
+    somewhere temporary-ish, and settings must survive fetching a newer zip.
+    """
+    return _xdg_dir()

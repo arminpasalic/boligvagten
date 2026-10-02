@@ -13,6 +13,36 @@ fremvisning og ingenting måles som regel i minutter.
 
 ## Kom i gang
 
+### Uden terminal: hent og dobbeltklik
+
+1. Hent `boligvagten-<version>.zip` fra
+   [seneste udgivelse](https://github.com/arminpasalic/boligvagten/releases/latest)
+   og pak den ud.
+2. Dobbeltklik på **Start Boligvagten** (`.command` på macOS, `.bat` på
+   Windows).
+3. Boligvagten åbner i din browser. Sæt dine søgninger, filtre og beskeder
+   til telefonen op dér, og tryk Gem.
+
+Lad fanen være åben, så længe du vil have besked. Lukker du den, stopper
+Boligvagten; dine indstillinger og listen over sete boliger gemmes i
+`~/.config/boligvagten/` til næste gang.
+
+Der installeres ingenting. Har computeren ikke Python 3.9 eller nyere, hentes
+en midlertidig kopi, som slettes igen, når Boligvagten stopper. Første gang
+kan macOS eller Windows advare om filen: se trinene i
+[README.md](README.md#no-terminal-download-and-double-click) eller i
+`README.txt` i zip-filen.
+
+### Auto-kontakt (valgfrit)
+
+Boligvagten kan udfylde udlejerens kontaktformular hos CEJ og Kereby, så snart
+en ny bolig dukker op. På siden vælger du for hver side **Fra**, **Kun test**
+(udfyld og gem et billede, send intet) eller **Send**, og **Prøv nu** viser,
+hvad der ville blive sendt. Alt er slået fra som standard. Kræver en browser,
+som hentes midlertidigt (ca. 150 MB) og slettes igen, når Boligvagten stopper.
+
+### Fra terminalen
+
 ```bash
 uvx --from git+https://github.com/arminpasalic/boligvagten.git boligvagten
 ```
@@ -29,7 +59,7 @@ Filtre (pris, værelser, m², nøgleord) og byer sættes i `config.py` — se
 |---|---|---|
 | boligportal.dk | leje | hele Danmark |
 | udlejning.cej.dk | leje | Sjælland / København |
-| kerebyudlejning.dk | leje | København |
+| kereby.dk | leje | København |
 | cityapartment.dk | leje | København |
 | boligsiden.dk | **køb** | hele Danmark |
 

@@ -37,16 +37,22 @@ jobs:
       - name: Build sdist + wheel
         run: |
           python -m build
+      - name: Build double-click download
+        # Kept out of dist/: the PyPI upload takes everything in that folder.
+        run: python scripts/build_bundle.py bundle
       - name: Smoke-test installed wheel
         run: |
           python -m venv /tmp/boligvagten-release-smoke
           /tmp/boligvagten-release-smoke/bin/pip install --no-deps dist/*.whl
           cd /tmp
           HOME=/tmp/boligvagten-release-home /tmp/boligvagten-release-smoke/bin/boligvagten --help
+          /tmp/boligvagten-release-smoke/bin/python -c "from importlib import resources; assert resources.files('boligvagten').joinpath('web_ui.html').is_file()"
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
       - name: GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*
+          files: |
+            dist/*
+            bundle/*.zip
           generate_release_notes: true

@@ -181,27 +181,149 @@ def test_parser_health_failure_does_not_count_as_a_success(monkeypatch, capsys):
     assert "parser health check failed" in capsys.readouterr().out
 
 
-def test_action_outbox_completes_and_interrupted_action_never_retries(tmp_path, monkeypatch):
-    cfg = types.SimpleNamespace(CEJ_CONTACT={"auto_contact": True, "live_send": True})
+def _contact_cfg(**sites):
+    """A config with auto-contact on for the given sites: {site: live_send}."""
+    return types.SimpleNamespace(CONTACT={
+        "sites": {s: {"auto_contact": True, "live_send": live} for s, live in sites.items()},
+        "name": "Ann", "email": "a@b.dk", "phone": "20304050", "message": "Hej",
+        "birthdate": "1990-01-01",
+    })
+
+
+@pytest.fixture
+def outbox(tmp_path, monkeypatch):
+    """Isolated state + a scripted contact.run; returns the list of calls."""
+    from boligvagten import browser, contact
+
     monkeypatch.setattr(monitor, "STATE_FILE", tmp_path / "seen.json")
-    calls = []
-    monkeypatch.setattr(
-        monitor.contact_cej, "contact", lambda url, _cc: calls.append(url) or True
-    )
+    monkeypatch.setattr(browser, "ensure", lambda *a, **k: True)
+    calls, results = [], []
+
+    def fake_run(site, url, listing_id, cc, live, **kw):
+        calls.append((site, listing_id, live))
+        return results.pop(0) if results else contact.Result(contact.SENT, "ok")
+
+    monkeypatch.setattr(contact, "run", fake_run)
+    return calls, results
+
+
+def _queued(cfg, *items):
     state = monitor._empty_state()
-    item = _listing(source="cej", id="cej:1", url="https://cej.example/1")
-    monitor.queue_actions([item], cfg, state)
+    monitor.queue_actions(list(items), cfg, state)
     monitor.save_state(state)
+    return state
+
+
+def test_action_outbox_completes_and_interrupted_action_never_retries(outbox):
+    calls, _ = outbox
+    cfg = _contact_cfg(cej=True)
+    item = _listing(source="cej", id="cej:1", url="https://cej.example/1")
+    state = _queued(cfg, item)
     monitor.process_action_outbox(cfg, state)
-    assert calls == [item.url]
+    assert calls == [("cej", "cej:1", True)]
     assert state["actions"][item.id]["status"] == "completed"
 
     # Simulate termination after the durable claim but before a known result.
     state["actions"][item.id]["status"] = "in_progress"
     monitor.save_state(state)
     monitor.process_action_outbox(cfg, state)
-    assert calls == [item.url]
+    assert len(calls) == 1
     assert state["actions"][item.id]["status"] == "needs_review"
+
+
+def test_only_enabled_sites_get_actions(outbox):
+    cfg = _contact_cfg(kereby=False)
+    state = _queued(cfg, _listing(source="cej", id="cej:1"),
+                    _listing(source="kereby", id="kereby:1"),
+                    _listing(source="boligportal", id="bp:1"))
+    assert set(state["actions"]) == {"kereby:1"}
+    assert state["actions"]["kereby:1"]["live_send"] is False
+
+
+def test_failures_before_sending_retry_then_give_up(outbox):
+    from boligvagten import contact
+
+    calls, results = outbox
+    cfg = _contact_cfg(cej=True)
+    state = _queued(cfg, _listing(source="cej", id="cej:1"))
+    results.extend([contact.Result(contact.NOT_SENT, "form not found")] * 3)
+    for _ in range(4):
+        monitor.process_action_outbox(cfg, state)
+    assert len(calls) == monitor.ACTION_MAX_ATTEMPTS
+    action = state["actions"]["cej:1"]
+    assert (action["status"], action["attempts"], action["result"]) == ("failed", 3, "not_sent")
+
+
+def test_listing_page_not_ready_waits_without_spending_attempts(outbox):
+    from boligvagten import contact
+
+    calls, results = outbox
+    cfg = _contact_cfg(kereby=True)
+    state = _queued(cfg, _listing(source="kereby", id="kereby:1"))
+    results.extend([contact.Result(contact.NOT_READY, "not published")] * 5)
+    for _ in range(5):
+        monitor.process_action_outbox(cfg, state)
+    action = state["actions"]["kereby:1"]
+    assert len(calls) == 5
+    assert (action["status"], action.get("attempts")) == ("pending", 0)
+
+
+def test_uncertain_send_is_never_retried(outbox):
+    from boligvagten import contact
+
+    calls, results = outbox
+    cfg = _contact_cfg(cej=True)
+    state = _queued(cfg, _listing(source="cej", id="cej:1"))
+    results.append(contact.Result(contact.UNCERTAIN, "no reply"))
+    monitor.process_action_outbox(cfg, state)
+    monitor.process_action_outbox(cfg, state)
+    assert len(calls) == 1
+    assert state["actions"]["cej:1"]["status"] == "needs_review"
+
+
+def test_switching_a_site_off_cancels_and_to_test_mode_stops_sending(outbox):
+    calls, _ = outbox
+    live_cfg = _contact_cfg(cej=True, kereby=True)
+    state = _queued(live_cfg, _listing(source="cej", id="cej:1"),
+                    _listing(source="kereby", id="kereby:1"))
+    # Kereby switched off, CEJ switched from "send" to "test only" before the run.
+    later_cfg = _contact_cfg(cej=False)
+    monitor.process_action_outbox(later_cfg, state)
+    assert state["actions"]["kereby:1"]["status"] == "cancelled"
+    assert calls == [("cej", "cej:1", False)]
+
+
+def test_stale_actions_expire(outbox):
+    calls, _ = outbox
+    cfg = _contact_cfg(cej=True)
+    state = _queued(cfg, _listing(source="cej", id="cej:1"))
+    state["actions"]["cej:1"]["queued_at"] = "2020-01-01T00:00:00"
+    monitor.process_action_outbox(cfg, state)
+    assert calls == []
+    assert state["actions"]["cej:1"]["status"] == "expired"
+
+
+def test_actions_wait_while_the_browser_is_unavailable(outbox, monkeypatch):
+    from boligvagten import browser
+
+    calls, _ = outbox
+    monkeypatch.setattr(browser, "ensure", lambda *a, **k: False)
+    cfg = _contact_cfg(cej=True)
+    state = _queued(cfg, _listing(source="cej", id="cej:1"))
+    monitor.process_action_outbox(cfg, state)
+    assert calls == []
+    assert state["actions"]["cej:1"]["status"] == "pending"
+
+
+def test_legacy_cej_contact_config_still_works(outbox):
+    calls, _ = outbox
+    cfg = types.SimpleNamespace(CEJ_CONTACT={
+        "auto_contact": True, "live_send": False, "name": "Ann", "email": "a@b.dk",
+        "phone": "20304050", "message": "Hej",
+    })
+    state = _queued(cfg, _listing(source="cej", id="cej:1"))
+    monitor.process_action_outbox(cfg, state)
+    assert calls == [("cej", "cej:1", False)]
 
 
 def test_default_poll_interval_is_30_to_60_seconds(monkeypatch):
@@ -213,6 +335,36 @@ def test_default_poll_interval_is_30_to_60_seconds(monkeypatch):
     )
     monitor.run_loop(cfg, once=True)
     assert sampled == [(30, 60)]
+
+
+def test_run_loop_stops_promptly_and_rereads_config(monkeypatch):
+    import threading
+
+    stop = threading.Event()
+    seen_cfgs, cycles = [], []
+    configs = iter([types.SimpleNamespace(SOURCES={}, POLL_MIN_SECONDS=30,
+                                          POLL_MAX_SECONDS=60)] * 10)
+
+    def check(cfg):
+        seen_cfgs.append(cfg)
+        return 0
+
+    def on_cycle(result, delay):
+        cycles.append((result, delay))
+        if len(cycles) == 2:
+            stop.set()
+
+    monkeypatch.setattr(monitor, "check_once", check)
+    # A real 30-60 s wait would hang the test; stop.wait() must return at once.
+    monkeypatch.setattr(monitor.time, "sleep", lambda s: pytest.fail("used time.sleep"))
+    waits = []
+    real_wait = stop.wait
+    monkeypatch.setattr(stop, "wait", lambda t: waits.append(t) or real_wait(0))
+
+    monitor.run_loop(None, stop=stop, get_cfg=lambda: next(configs), on_cycle=on_cycle)
+    assert len(seen_cfgs) == 2
+    assert [r for r, _ in cycles] == [0, 0]
+    assert len(waits) == 1 and 30 <= waits[0] <= 60
 
 
 # ---------------------------------------------------------------- registry
@@ -277,10 +429,51 @@ def test_example_config_is_complete_and_safe():
     for mod in sources.REGISTRY:
         conf = cfg.SOURCES[mod.KEY]
         assert conf.get("url") or conf.get("urls")
-    # CEJ_CONTACT carries every key contact_cej.contact() reads...
-    for key in ("auto_contact", "live_send", "headless", "name", "email", "phone",
-                "message", "birthdate", "hvem", "beskaeftigelse", "detaljer"):
-        assert key in cfg.CEJ_CONTACT, f"CEJ_CONTACT missing {key!r}"
-    # ...and ships with both safety switches off.
-    assert cfg.CEJ_CONTACT["auto_contact"] is False
-    assert cfg.CEJ_CONTACT["live_send"] is False
+    # CONTACT carries every key the contact modules read...
+    for key in ("sites", "headless", "name", "email", "phone", "message",
+                "birthdate", "hvem", "beskaeftigelse", "detaljer"):
+        assert key in cfg.CONTACT, f"CONTACT missing {key!r}"
+    # ...covers every supported site, and ships with everything off.
+    assert set(cfg.CONTACT["sites"]) == {"cej", "kereby"}
+    for site in cfg.CONTACT["sites"].values():
+        assert site == {"auto_contact": False, "live_send": False}
+
+
+# ---------------------------------------------------------------- disclaimer
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def test_disclaimer_is_shown_when_watching_starts(monkeypatch, capsys):
+    from boligvagten import DISCLAIMER
+
+    monkeypatch.setattr(monitor, "check_once", lambda _cfg: 0)
+    monitor.run_loop(types.SimpleNamespace(SOURCES={}, FILTERS={}), once=True)
+    assert DISCLAIMER in _flat(capsys.readouterr().out)
+
+
+def test_disclaimer_is_shown_with_list_and_help(monkeypatch, capsys):
+    from boligvagten import DISCLAIMER
+
+    monkeypatch.setattr(monitor, "collect_listings", lambda _cfg: [])
+    monitor.list_once(types.SimpleNamespace())
+    assert DISCLAIMER in _flat(capsys.readouterr().out)
+    with pytest.raises(SystemExit):
+        monitor.main(["--help"])
+    assert DISCLAIMER in _flat(capsys.readouterr().out)
+
+
+def test_web_mode_ends_the_process_after_the_page_closes(monkeypatch):
+    from boligvagten import web
+
+    served = []
+    monkeypatch.setattr(web, "serve", lambda: served.append(True))
+
+    def fake_exit(code):
+        raise SystemExit(f"os._exit({code})")
+
+    monkeypatch.setattr(monitor.os, "_exit", fake_exit)
+    with pytest.raises(SystemExit, match=r"os\._exit\(0\)"):
+        monitor.main(["--web"])
+    assert served == [True]

@@ -23,4 +23,8 @@ jobs:
       - name: Tests (offline — parsers run against recorded fixtures)
         run: pytest -q --cov=boligvagten --cov-report=term-missing
       - name: Build package
-        run: python -m build
+        run: |
+          python -m build
+          python -c "import glob, zipfile; whl = glob.glob('dist/*.whl')[0]; assert 'boligvagten/web_ui.html' in zipfile.ZipFile(whl).namelist(), 'web_ui.html missing from wheel'"
+      - name: Build double-click download
+        run: python scripts/build_bundle.py bundle
