@@ -18,16 +18,30 @@ import random
 import re
 import sys
 import tempfile
+import textwrap
 import time
 from datetime import datetime
 
-from . import contact_cej, filters, notify, paths, sources
+from . import DISCLAIMER, browser, contact, filters, notify, paths, sources
 
 # Resolved once at import; tests monkeypatch these attributes directly.
 CONFIG_FILE = paths.config_file()
 EXAMPLE_FILE = paths.example_file()
 STATE_FILE = paths.state_dir() / "seen_listings.json"
 STATE_VERSION = 2
+
+# Auto-contact outbox limits.
+ACTION_MAX_ATTEMPTS = 3   # retries only for failures before anything was submitted
+ACTION_MAX_AGE_HOURS = 12  # don't write to a landlord about a day-old listing
+
+
+def _wrapped_disclaimer():
+    # break_on_hyphens=False keeps "human-ish" in one piece.
+    return textwrap.fill(DISCLAIMER, width=78, break_on_hyphens=False)
+
+
+def print_disclaimer():
+    print(_wrapped_disclaimer(), flush=True)
 
 
 # ---------- Config bootstrap ----------
@@ -283,57 +297,88 @@ def _now():
 
 
 def queue_actions(new_items, cfg, state):
-    """Add opt-in CEJ actions to the state transaction before listings are acknowledged."""
-    cc = getattr(cfg, "CEJ_CONTACT", None) or {}
-    if not cc.get("auto_contact"):
-        return
+    """Add auto-contact actions to the state transaction before listings are acknowledged."""
+    cc = contact.settings_from(cfg)
     for it in new_items:
-        if it.source == "cej" and it.id not in state["actions"]:
+        if it.source not in contact.SITES or it.id in state["actions"]:
+            continue
+        auto, live = contact.site_mode(cc, it.source)
+        if auto:
             state["actions"][it.id] = {
                 "source": it.source,
                 "url": it.url,
                 "status": "pending",
-                "live_send": bool(cc.get("live_send")),
+                "live_send": live,
+                "attempts": 0,
                 "queued_at": _now(),
             }
 
 
+def _age_hours(action):
+    try:
+        return (datetime.now() - datetime.fromisoformat(action["queued_at"])).total_seconds() / 3600
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def _apply_result(action, result):
+    """Map a contact Result onto the action's status. Only safe failures retry."""
+    action["result"] = result.code
+    action["detail"] = result.detail
+    action["updated_at"] = _now()
+    if result.code in (contact.SENT, contact.FILLED, contact.CLOSED):
+        action["status"] = "completed"
+    elif result.code == contact.NOT_READY:
+        action["status"] = "pending"  # the listing page isn't up yet; not an attempt
+    elif result.code == contact.NOT_SENT:
+        action["attempts"] = action.get("attempts", 0) + 1
+        action["status"] = "pending" if action["attempts"] < ACTION_MAX_ATTEMPTS else "failed"
+    else:  # UNCERTAIN: may have reached the landlord — never resend blindly
+        action["status"] = "needs_review"
+
+
 def process_action_outbox(cfg, state):
-    """Run queued actions once; interrupted submissions require manual review."""
-    cc = getattr(cfg, "CEJ_CONTACT", None) or {}
+    """Run queued auto-contact actions; interrupted submissions require manual review."""
+    cc = contact.settings_from(cfg)
     changed = False
     for listing_id, action in state["actions"].items():
-        if action.get("status") == "in_progress":
+        status = action.get("status")
+        if status == "in_progress":
             action["status"] = "needs_review"
             action["updated_at"] = _now()
             changed = True
             print(
-                f"[cej] {listing_id} was interrupted while auto-contact was running. "
-                "It will NOT be retried automatically; inspect the CEJ inquiry and "
-                f"the action entry in {STATE_FILE}.",
+                f"[contact] {listing_id} was interrupted while auto-contact was running. "
+                "It will NOT be retried automatically; check whether the landlord got "
+                f"your message, and see the action entry in {STATE_FILE}.",
                 flush=True,
             )
+        elif status == "pending":
+            auto, _ = contact.site_mode(cc, action.get("source"))
+            if not auto:
+                action.update(status="cancelled", updated_at=_now())
+                changed = True
+            elif _age_hours(action) > ACTION_MAX_AGE_HOURS:
+                action.update(status="expired", updated_at=_now())
+                changed = True
     if changed:
         save_state(state)
 
-    if not cc.get("auto_contact"):
-        return
-    for listing_id, action in state["actions"].items():
-        if action.get("status") != "pending":
-            continue
+    pending = [(i, a) for i, a in state["actions"].items() if a.get("status") == "pending"]
+    if not pending or not browser.ensure():
+        return  # without a browser the actions simply wait for the next poll
+    for listing_id, action in pending:
+        _, live_now = contact.site_mode(cc, action["source"])
+        # Send only if sending was on when queued AND still is now.
+        live = bool(action.get("live_send")) and live_now
         action["status"] = "in_progress"
         action["attempted_at"] = _now()
         save_state(state)  # Durable claim before opening/submitting the external form.
-        action_cc = dict(cc)
-        action_cc["live_send"] = bool(action.get("live_send"))
         try:
-            succeeded = contact_cej.contact(action["url"], action_cc)
-        except Exception as e:
-            succeeded = False
-            action["error"] = str(e)
-            print(f"[cej] auto-contact error for {listing_id}: {e}", flush=True)
-        action["status"] = "completed" if succeeded else "failed"
-        action["updated_at"] = _now()
+            result = contact.run(action["source"], action["url"], listing_id, cc, live)
+        except Exception as e:  # run() doesn't raise; if it ever does, assume the worst
+            result = contact.Result(contact.UNCERTAIN, f"{type(e).__name__}: {e}")
+        _apply_result(action, result)
         save_state(state)
 
 
@@ -418,12 +463,19 @@ def check_once(cfg):
 # ---------- One-shot commands ----------
 
 
-def list_once(cfg):
-    """Fetch everything now, apply filters, print a table — a one-shot search."""
+def collect_listings(cfg):
+    """Fetch everything now and apply all filters — rows sorted for display."""
     rows, _ = fetch_enabled(cfg)
     rows = filters.deep_apply(rows, getattr(cfg, "FILTERS", None), per_source_filters(cfg))
     # Rentals first (cheapest up), then for-sale (cash prices would dwarf rents).
     rows.sort(key=lambda it: (it.deal != "rent", it.price_dkk is None, it.price_dkk or 0))
+    return rows
+
+
+def list_once(cfg):
+    """Fetch everything now, apply filters, print a table — a one-shot search."""
+    print_disclaimer()
+    rows = collect_listings(cfg)
     if not rows:
         print("No listings matched your sources + filters.")
         return
@@ -461,21 +513,46 @@ def test_notify(cfg):
         print("ntfy: disabled in config.py.")
 
 
+def contact_test(url, cfg):
+    """Dry-run the contact form on one listing; never sends. Returns an exit code."""
+    site = contact.site_for_url(url)
+    if site is None:
+        print("--contact-test supports CEJ (udlejning.cej.dk) and Kereby (kereby.dk) listings.")
+        return 2
+    listing_id = f"cej:{url.rstrip('/').rsplit('/', 1)[-1]}" if site == "cej" else None
+    result = contact.run(site, url, listing_id, contact.settings_from(cfg), live=False)
+    if result.code == contact.FILLED:
+        print(f"Dry run OK. Check the screenshot: {contact.screenshot_path(site)}")
+        return 0
+    return 1
+
+
 # ---------- Main loop ----------
 
 
-def run_loop(cfg, once=False):
+def _poll_bounds(cfg):
     lo = getattr(cfg, "POLL_MIN_SECONDS", 30)
     hi = getattr(cfg, "POLL_MAX_SECONDS", 60)
-    if lo > hi:
-        lo, hi = hi, lo
-    offline_cap = getattr(cfg, "OFFLINE_MAX_BACKOFF", 600)
+    return (hi, lo) if lo > hi else (lo, hi)
+
+
+def run_loop(cfg, once=False, stop=None, get_cfg=None, on_cycle=None):
+    """Poll forever (or once). The web UI passes extra hooks:
+
+    stop      threading.Event — set it to end the loop promptly
+    get_cfg   callable returning the current config, re-read every cycle
+    on_cycle  callable(result, delay) after each check; result is None offline
+    """
+    if get_cfg is not None:
+        cfg = get_cfg()
+    lo, hi = _poll_bounds(cfg)
     enabled_labels = [mod.LABEL for mod, _ in sources.enabled(getattr(cfg, "SOURCES", {}))]
     print(
         f"Boligvagten starting. Poll: randomized {lo}-{hi}s. "
         f"Sources: {', '.join(enabled_labels) or 'NONE ENABLED'}. State: {STATE_FILE}",
         flush=True,
     )
+    print_disclaimer()
     if filters.none_active(getattr(cfg, "FILTERS", None), getattr(cfg, "SOURCES", {})):
         print(
             "[note] No filters configured — every listing your source URLs return will "
@@ -485,12 +562,16 @@ def run_loop(cfg, once=False):
         )
     offline_streak = 0
     while True:
-        got_any = False
+        if get_cfg is not None:
+            cfg = get_cfg()
+        lo, hi = _poll_bounds(cfg)
+        offline_cap = getattr(cfg, "OFFLINE_MAX_BACKOFF", 600)
+        result = None
         try:
             result = check_once(cfg)
-            got_any = result is not None
         except Exception as e:
             print(f"[warn] check failed: {e}", flush=True)
+        got_any = result is not None
 
         if got_any:
             if offline_streak:
@@ -509,16 +590,24 @@ def run_loop(cfg, once=False):
                 flush=True,
             )
 
-        if once:
+        if on_cycle is not None:
+            on_cycle(result, delay)
+        if once or (stop is not None and stop.is_set()):
             break
         print(f"[sleep] next check in {delay:.1f}s", flush=True)
-        time.sleep(delay)
+        if stop is not None:
+            if stop.wait(delay):
+                break
+        else:
+            time.sleep(delay)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="monitor.py",
         description="Watch Danish housing sites and get an alert when a new listing appears.",
+        epilog=_wrapped_disclaimer(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--once", action="store_true",
                     help="run a single check and exit")
@@ -528,10 +617,25 @@ def main(argv=None):
                     help="send a test notification to every channel and exit")
     ap.add_argument("--setup", action="store_true",
                     help="print the phone-notification setup again (sends a test push)")
-    ap.add_argument("--contact-cej", metavar="URL",
-                    help="fill the CEJ contact form for one listing URL and exit "
-                         "(dry-run unless live_send is enabled in config.py)")
+    ap.add_argument("--contact-test", metavar="URL",
+                    help="fill in the contact form on one CEJ or Kereby listing without "
+                         "sending it, save a screenshot, and exit")
+    ap.add_argument("--contact-cej", metavar="URL", help=argparse.SUPPRESS)  # old name
+    ap.add_argument("--web", action="store_true",
+                    help="open the settings and status page in your browser; "
+                         "closing the page stops boligvagten")
     args = ap.parse_args(argv)
+
+    if args.web:
+        from . import web
+        web.serve()
+        # Closing the tab must end the process: the launcher deletes its
+        # temporary runtime only once it exits. serve() has already saved the
+        # state and removed the temporary browser, so don't let a background
+        # thread stuck in network or browser code keep the process alive.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
 
     cfg, created = load_config()
     if created or args.setup:
@@ -539,9 +643,8 @@ def main(argv=None):
         if args.setup:
             return
 
-    if args.contact_cej:
-        contact_cej.contact(args.contact_cej, getattr(cfg, "CEJ_CONTACT", {}))
-        return
+    if args.contact_test or args.contact_cej:
+        sys.exit(contact_test(args.contact_test or args.contact_cej, cfg))
     if args.test_notify:
         test_notify(cfg)
         return

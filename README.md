@@ -18,7 +18,7 @@ in minutes.
   • [cej] Nordre Fasanvej 119, 2000 Frederiksberg — 1r, 29m², 6.929 DKK/md
     https://udlejning.cej.dk/boliger/f71591e2...
   • [kereby] Valby Langgade 36, 2500 Valby — 3r, 86m², 17.200 DKK/md
-    https://kerebyudlejning.dk/bolig/a8ead8ef...
+    https://kereby.dk/bolig/valby-langgade-36-5-tv-2500-valby/
   • [boligsiden] Gunløgsgade 22, 3. 2, 2300 København S — 2r, 47m², 3.975.000 DKK (ejerudgift 3.645 kr./md)
     https://www.boligsiden.dk/adresse/gunloegsgade-22...
 ```
@@ -43,6 +43,38 @@ in minutes.
   city or *your* favourite site is a small, documented change.
 
 ## Quick start
+
+### No terminal: download and double-click
+
+1. Download `boligvagten-<version>.zip` from the
+   [latest release](https://github.com/arminpasalic/boligvagten/releases/latest)
+   and unzip it.
+2. Double-click **Start Boligvagten** (`.command` on macOS, `.bat` on Windows).
+3. Boligvagten opens in your browser. Set your searches, filters and phone
+   alerts there, then press Save.
+
+Keep the tab open while you want alerts. Closing it stops Boligvagten; your
+settings and the record of listings you have already seen are kept in
+`~/.config/boligvagten/` for next time.
+
+Nothing is installed. The launcher uses the Python already on your computer
+(3.9 or newer). If there is none, it downloads a temporary copy of
+[uv](https://docs.astral.sh/uv/) and Python into a temp folder and deletes it
+again when Boligvagten stops.
+
+The first time, your computer may not want to open a downloaded script:
+
+- **macOS** says it "could not verify" the file. Click Done, open System
+  Settings → Privacy & Security, scroll down, and click **Open Anyway** next
+  to "Start Boligvagten.command".
+- **Windows** shows "Windows protected your PC". Click **More info**, then
+  **Run anyway**.
+
+> **Chrome users:** Memory Saver may put a background tab to sleep after a
+> while, which stops Boligvagten. Add `127.0.0.1` under Settings →
+> Performance → "Always keep these sites active".
+
+### From the terminal
 
 Run the latest version directly from GitHub with `uvx`:
 
@@ -112,13 +144,19 @@ the monitor running. That's the whole setup.
 | Command | What it does |
 |---|---|
 | `boligvagten` | Watch continuously, alert on new listings |
+| `boligvagten --web` | Open the settings and status page in your browser (closing it stops) |
 | `boligvagten --list` | One-shot search: print everything matching your filters right now |
 | `boligvagten --once` | Run a single check and exit (handy for cron) |
 | `boligvagten --test-notify` | Send a test push to every channel |
 | `boligvagten --setup` | Re-print the phone setup instructions |
-| `boligvagten --contact-cej URL` | Dry-run the CEJ contact form on one listing |
+| `boligvagten --contact-test URL` | Fill in the contact form on one CEJ or Kereby listing without sending it |
 
 Running from a clone? `python3 monitor.py` takes the same flags.
+
+The browser page keeps its own `settings.json` in `~/.config/boligvagten/`.
+On first start it copies your existing `config.py` if there is one, so both
+ways of running share the same searches to begin with; after that, edit
+each in its own place.
 
 ## Configuration
 
@@ -173,7 +211,7 @@ affected site's attention.
 |---|---|---|---|---|
 | `boligportal` | boligportal.dk | rent | all of Denmark | server-rendered HTML |
 | `cej` | udlejning.cej.dk | rent | Zealand / Copenhagen | Remix data endpoint |
-| `kereby` | kerebyudlejning.dk | rent | Copenhagen | public JSON API |
+| `kereby` | kereby.dk | rent | Copenhagen | public JSON API |
 | `cityapartment` | cityapartment.dk | rent | Copenhagen | server-rendered HTML |
 | `boligsiden` | boligsiden.dk | **sale** | all of Denmark | public JSON API |
 
@@ -183,20 +221,41 @@ Want another site? That's the fun part — see
 function, register it, done. PRs welcome — or open a
 [site request](https://github.com/arminpasalic/boligvagten/issues/new?template=site_request.yml).
 
-## Auto-contact (CEJ) — optional
+## Auto-contact (CEJ, Kereby) — optional
 
-CEJ listings receive a flood of inquiries almost immediately. Boligvagten can
-fill out CEJ's 3-step contact form automatically the moment a listing
-appears: your details, your message to the landlord, your profile.
+Popular listings receive a flood of inquiries almost immediately. Boligvagten
+can fill out the landlord's contact form the moment a listing appears:
 
-It is **off by default**, and its `live_send` safety stays off even when you
-enable it — the form gets filled and screenshotted (`cej_phase3.png`) but
-**not** submitted until you've verified the result and flipped the switch:
+- **CEJ** — the 3-step form: your details, your message, your profile.
+- **Kereby** — the "Interesseret?" form: name, email, message.
+
+Each site has three settings: **Off**, **Test only** (fill the form and save a
+screenshot, send nothing) and **Send**. In the browser page they're under
+Auto-contact, with a **Try it now** button that fills the form on a current
+listing and shows you the screenshot. In `config.py` they're the `CONTACT`
+block (`auto_contact` / `live_send` per site). Everything is **off by
+default**, and Send is refused while your details still contain the template's
+placeholders.
+
+From the terminal, check one listing first — this never sends:
 
 ```bash
-pip install playwright && playwright install chromium
-boligvagten --contact-cej "https://udlejning.cej.dk/boliger/<id>"   # dry-run
+boligvagten --contact-test "https://udlejning.cej.dk/boliger/<id>"
+boligvagten --contact-test "https://kereby.dk/bolig/<address>/"
 ```
+
+It drives a headless browser (Playwright). If your Python has none, a
+temporary copy (about 150 MB) is downloaded when auto-contact is on and
+deleted again when Boligvagten stops. What happens to each listing is
+recorded in `seen_listings.json` (and listed on the page): a form that
+couldn't be filled is retried up to three times; once Send has been pressed,
+nothing is ever retried automatically — if the site's reply is unclear, the
+entry says "needs review" so you can check by hand. During test runs every
+request that could submit the form is blocked.
+
+After a site redesign, `python scripts/check_contact.py` runs the forms on
+live listings with the site's reply faked, so nothing is sent, and tells you
+which step broke.
 
 **Use it responsibly.** This submits a real housing application in your name.
 Write an honest message, keep it personal, and don't spray inquiries at
@@ -212,7 +271,8 @@ boligvagten/monitor.py     the loop: poll → diff against seen_listings.json �
 boligvagten/sources/       one module per site; each exposes parse() + fetch()
 boligvagten/filters.py     config-driven price/rooms/size/keyword filtering
 boligvagten/notify.py      ntfy push + macOS banner + first-run onboarding
-boligvagten/contact_cej.py optional Playwright form-filler
+boligvagten/web.py         local browser UI (--web): settings, status, live log
+boligvagten/contact*.py    optional auto-contact (Playwright form-filler per site)
 ```
 
 New listings are detected by ID, state is written atomically, failed phone

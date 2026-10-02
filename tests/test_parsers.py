@@ -190,6 +190,29 @@ def test_kereby_parse_skips_nonresidential_and_unavailable():
     assert items[1].price_dkk == 25650
 
 
+def test_kereby_links_point_to_the_published_kereby_dk_page():
+    slugs = [
+        "valby-langgade-36-5-tv-2500-valby",
+        "sortedam-dossering-45-5-tv-2200-kobenhavn-n",
+        "sortedam-dossering-45-5-tv-2200-kobenhavn-n",  # WP lists some pages twice
+        "sortedam-dossering-4-1-th-2200-kobenhavn-n",   # shares a prefix, not a match
+    ]
+    urls = {it.id: it.url for it in kereby.parse(load("kereby.json"), slugs=slugs)}
+    assert urls["kereby:a8ead8ef-2720-4143-943f-f712cb755771"] == (
+        "https://kereby.dk/bolig/valby-langgade-36-5-tv-2500-valby/"
+    )
+    assert urls["kereby:140b3307-a27a-48f2-8a90-70d6205daa1e"] == (
+        "https://kereby.dk/bolig/sortedam-dossering-45-5-tv-2200-kobenhavn-n/"
+    )
+
+
+def test_kereby_unpublished_page_links_to_the_overview_not_a_404():
+    items = kereby.parse(load("kereby.json"), slugs=[])
+    assert {it.url for it in items} == {kereby.INDEX_URL}
+    assert kereby.slugify("Godthåbsvej 62B, parterre 2000") == "godthabsvej-62b-parterre-2000"
+    assert kereby.slugify("Fælledvej 23, 5. th 2200") == "faelledvej-23-5-th-2200"
+
+
 def test_kereby_parse_rejects_garbage():
     with pytest.raises(json.JSONDecodeError):
         kereby.parse("this is not json")

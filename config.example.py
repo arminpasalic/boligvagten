@@ -98,7 +98,7 @@ SOURCES = {
         "url": "https://www.boligportal.dk/lejeboliger/k%C3%B8benhavn/?min_rental_period=0",
     },
 
-    # Kereby (kerebyudlejning.dk) — private administrator, Copenhagen.
+    # Kereby (kereby.dk) — private administrator, Copenhagen.
     # This talks directly to their public listing API (found via DevTools →
     # Network), so there is no URL to customize — use "filters" instead.
     "kereby": {
@@ -153,31 +153,37 @@ NTFY = {
 MACOS_NOTIFICATION = True
 
 # ---------------------------------------------------------------------------
-# CEJ auto-contact (optional; needs Playwright)
+# Auto-contact (optional)
 # ---------------------------------------------------------------------------
 # Popular listings get flooded with inquiries within the hour — being among
-# the very first is what gets you a viewing. When enabled, every new CEJ
-# listing triggers an automatic fill of its 3-step contact form.
+# the very first is what gets you a viewing. When a site is switched on, every
+# new listing from it gets its contact form filled in automatically:
+#   CEJ     — the 3-step form: your details, your message, your profile
+#   Kereby  — the "Interesseret?" form: name, email, message
 #
-#   pip install playwright && playwright install chromium
+# It drives a headless browser (Playwright). If yours has none, a temporary
+# one is downloaded when Boligvagten starts (about 150 MB) and deleted when
+# it stops.
 #
-# SAFETY: auto_contact is off by default, and live_send=False means the form
-# is filled but NOT submitted — a screenshot (cej_phase3.png) is saved so you
-# can check it. Try it on one listing first:
-#   python3 monitor.py --contact-cej "https://udlejning.cej.dk/boliger/..."
-# Only flip live_send once the screenshot looks right. This sends a real
-# application in your name — use it responsibly.
-CEJ_CONTACT = {
-    "auto_contact": False,   # True → auto-fill the form on every new CEJ listing
-    "live_send": False,      # False → dry-run: fill everything but don't press Send
+# SAFETY: everything is off by default. With "live_send": False the form is
+# filled but NOT sent — a screenshot (contact_cej.png / contact_kereby.png,
+# next to this file) shows what would have gone out. Try one listing first:
+#   python3 monitor.py --contact-test "https://udlejning.cej.dk/boliger/..."
+# Only switch "live_send" on once the screenshot looks right. This sends a
+# real application in your name — use it responsibly.
+CONTACT = {
+    "sites": {
+        "cej":    {"auto_contact": False, "live_send": False},
+        "kereby": {"auto_contact": False, "live_send": False},
+    },
     "headless": True,        # False → watch the browser while it fills
 
-    # Step 1 — contact details
+    # Your details (all sites)
     "name": "Your Name",
     "email": "you@example.com",
-    "phone": "12345678",
+    "phone": "12345678",     # CEJ asks for it; put it in the message for Kereby
 
-    # Step 2 — free-text message to the landlord. Sell yourself: job, income
+    # Message to the landlord (all sites). Sell yourself: job, income
     # (documentable), non-smoker, how fast you can move in, ...
     "message": """Hej,
 
@@ -191,9 +197,10 @@ Tlf: <telefon> — email: <email>
 Med venlig hilsen
 <navn>""",
 
-    # Step 3 — profile
+    # CEJ profile step
     "birthdate": "1990-01-01",      # ISO yyyy-mm-dd
     "hvem": "Enkeltperson",         # Enkeltperson / Par/kærester / Familie / Gruppe/roomies
     "beskaeftigelse": "I arbejde",  # I arbejde / Studerende / Ledig / Pensioneret
-    "detaljer": [],                 # e.g. ["Har kæledyr"] — empty list to skip
+    "detaljer": [],                 # e.g. ["Har kæledyr"] — Har hjemmeboende børn /
+                                    # Har kæledyr / Søger delebolig / Søger parkering
 }
