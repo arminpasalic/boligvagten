@@ -42,7 +42,8 @@ FILTER_INT_KEYS = (
 )
 FILTER_LIST_KEYS = ("exclude_keywords", "include_keywords", "description_keywords")
 SOURCE_KEYS = ("enabled", "urls", "filters", "max_pages", "min_interval_hours",
-               "private_kitchen_bath", "use_global_filters")
+               "private_kitchen_bath", "use_global_filters", "unit_types", "properties")
+SOURCE_LIST_KEYS = ("unit_types", "properties")  # lists of names (Heimstaden)
 NTFY_KEYS = ("enabled", "server", "topic")
 
 # ntfy's own topic rule.
@@ -112,7 +113,7 @@ def _normalize_source(conf):
         "filters": _normalize_filters(conf.get("filters")),
     }
     for key in ("max_pages", "min_interval_hours", "private_kitchen_bath",
-                "use_global_filters"):
+                "use_global_filters") + SOURCE_LIST_KEYS:
         if conf.get(key) is not None:
             out[key] = conf[key]
     return out
@@ -256,6 +257,10 @@ def validate(data):
         if hours is not None and (isinstance(hours, bool) or not isinstance(hours, (int, float))
                                   or hours < 0):
             raise SettingsError(f"{field}.min_interval_hours", "not_a_number")
+        for key in SOURCE_LIST_KEYS:
+            names = conf.get(key, [])
+            if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+                raise SettingsError(f"{field}.{key}", "bad_type")
         for flag in ("private_kitchen_bath", "use_global_filters"):
             if not isinstance(conf.get(flag, False), bool):
                 raise SettingsError(f"{field}.{flag}", "bad_type")

@@ -8,11 +8,15 @@ title, the area/street line under it, and the bold price.
 
 City and filters live in the URL path/query — browse to your search on the
 site and copy the URL (see config.example.py).
+
+Results come newest first, 18 per page, paged with &offset=N. One page per
+poll catches every new listing; "max_pages" (default 1) walks further back
+to also see older ones still on the market.
 """
 import json
 import re
 
-from .base import Listing, ParserHealthError, fetch_all, known_empty_page, strip_html
+from .base import Listing, ParserHealthError, http_get, known_empty_page, source_urls, strip_html
 
 KEY = "boligportal"
 LABEL = "Boligportal"
@@ -116,5 +120,27 @@ def parse(body, conf=None):
     return out
 
 
+def _with_offset(url, n):
+    """The search URL from result n on. Page 1 stays the URL as given."""
+    if not n:
+        return url
+    if re.search(r"[?&]offset=\d+", url):
+        return re.sub(r"([?&])offset=\d+", rf"\g<1>offset={n}", url)
+    return f"{url}{'&' if '?' in url else '?'}offset={n}"
+
+
 def fetch(conf):
-    return fetch_all(conf, parse)
+    """Newest-first: page 1, then older pages up to max_pages per URL."""
+    max_pages = conf.get("max_pages", 1)
+    out, seen = [], set()
+    for url in source_urls(conf):
+        offset = 0
+        for _ in range(max_pages):
+            page = parse(http_get(_with_offset(url, offset)), conf)
+            new = [it for it in page if it.id not in seen]
+            if not new:  # empty page, or the site repeated the last one
+                break
+            seen.update(it.id for it in new)
+            out.extend(new)
+            offset += len(page)
+    return out

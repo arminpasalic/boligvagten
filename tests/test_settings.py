@@ -77,6 +77,8 @@ def test_saved_settings_round_trip_through_validate(home):
          "SOURCES.sdk.min_interval_hours", "not_a_number"),
         (lambda d: d["SOURCES"]["sdk"].update(private_kitchen_bath="yes"),
          "SOURCES.sdk.private_kitchen_bath", "bad_type"),
+        (lambda d: d["SOURCES"]["heimstaden"].update(unit_types="Studiebolig"),
+         "SOURCES.heimstaden.unit_types", "bad_type"),
     ],
 )
 def test_validate_rejects_bad_values(home, mutate, field, code):
@@ -95,6 +97,15 @@ def test_sdk_options_survive_a_save_from_the_page(home):
     out = settings.validate(data)
     assert out["SOURCES"]["sdk"]["min_interval_hours"] == 24
     assert out["SOURCES"]["sdk"]["private_kitchen_bath"] is True
+
+
+def test_heimstaden_unit_lists_survive_a_save_from_the_page(home):
+    data = settings.load_or_seed()
+    conf = data["SOURCES"]["heimstaden"]
+    assert conf["unit_types"] == ["Studiebolig", "Ungdomsbolig"]   # from config.example.py
+    conf.update(enabled=True, unit_types=[], properties=["Domus Vista"])
+    out = settings.validate(data)["SOURCES"]["heimstaden"]
+    assert (out["unit_types"], out["properties"]) == ([], ["Domus Vista"])
 
 
 def test_source_added_after_settings_were_saved_gets_example_defaults_switched_off(home):

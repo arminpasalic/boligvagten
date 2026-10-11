@@ -1,12 +1,18 @@
 """Shared plumbing for listing sources: the Listing model and HTTP/HTML helpers."""
 from __future__ import annotations  # keeps `int | None` working on Python 3.9
 
+import gzip
 import html as htmllib
+import json
 import re
 import urllib.request
 from dataclasses import dataclass
 
+from .. import __version__
+
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+# For sites happy to see who's asking: polite and identifiable, not a browser.
+BOLIGVAGTEN_USER_AGENT = f"boligvagten/{__version__} (personal housing watcher)"
 
 
 class ParserHealthError(RuntimeError):
@@ -81,9 +87,29 @@ class Listing:
 
 
 def http_get(url, timeout=30, user_agent=USER_AGENT):
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
+    # gzip keeps big listing pages (up to ~1.6 MB) light on every poll.
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent,
+                                               "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8")
+        data = resp.read()
+        if resp.headers.get("Content-Encoding") == "gzip":
+            data = gzip.decompress(data)
+        return data.decode("utf-8")
+
+
+def embedded_json(body, marker):
+    """The JSON value written right after `marker` in a page's inline script; None if absent.
+
+    For server-rendered pages that hand their data to JavaScript, e.g.
+    `var _rentals = [...];` — read with marker "var _rentals =".
+    """
+    i = body.find(marker)
+    if i < 0:
+        return None
+    start = i + len(marker)
+    while start < len(body) and body[start].isspace():
+        start += 1
+    return json.JSONDecoder().raw_decode(body, start)[0]
 
 
 def strip_html(text):

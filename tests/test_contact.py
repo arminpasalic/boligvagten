@@ -66,6 +66,12 @@ def test_site_detection_from_urls():
     assert contact.site_for_url("https://www.boligportal.dk/x") is None
 
 
+def test_kereby_listing_pages_old_and_new_paths():
+    assert contact_kereby._is_listing_page("https://kereby.dk/jorato-case/a-1-2500-valby/")
+    assert contact_kereby._is_listing_page("https://kereby.dk/bolig/a-1-2500-valby/")
+    assert not contact_kereby._is_listing_page("https://kereby.dk/bolig/")
+
+
 # ---------------------------------------------------------------- dry-run guard
 
 class FakeRoute:

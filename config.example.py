@@ -147,6 +147,61 @@ SOURCES = {
         # "max_pages": 5,               # 100 buildings per page
     },
 
+    # --- Private student/youth studios: first come, first served ---------
+    # These rent without a seniority list, so an instant alert matters. They
+    # skip the apartment FILTERS above ("use_global_filters": False) — a
+    # 26 m² studio would fail a 3-room search — and use only their own.
+    # Their pages are big (0.5–1.6 MB), hence a few minutes between checks.
+
+    # Blækhus (blaekhus-living.dk, EDC Poul Erik Bech) — studios with their
+    # own kitchenette and bathroom. Getting your URL: one "Boligliste" page
+    # per building (blaekhus-living.dk → building → "Ledige boliger");
+    # drop the ones you don't want. Aarhus: /aarhus/boligliste-aarhus/.
+    "blaekhus": {
+        "enabled": False,
+        "urls": [
+            "https://blaekhus-living.dk/frederiksberg/boligliste-frederiksberg/",
+            "https://blaekhus-living.dk/vanloese/boligliste-vanloese/",
+            "https://blaekhus-living.dk/valby/boligliste-valby/",
+            "https://blaekhus-living.dk/valby-m/boligliste-valby-m/",
+        ],
+        "use_global_filters": False,
+        "filters": {},
+        "min_interval_hours": 0.1,      # every ~6 minutes
+    },
+
+    # Heimstaden (heimstaden.dk) — one page lists every available Heimstaden
+    # rental in Denmark (incl. Domus Vista, Frederiksberg). Getting your URL:
+    # none to change; pick units with "unit_types" (their own labels,
+    # e.g. "Studiebolig", "Ungdomsbolig"; [] = all) and/or "properties"
+    # (building names, kept whatever their type), then narrow the area with
+    # include_keywords on the city in the address.
+    "heimstaden": {
+        "enabled": False,
+        "url": "https://www.heimstaden.dk/ledige-lejeboliger/",
+        "unit_types": ["Studiebolig", "Ungdomsbolig"],
+        "properties": ["Domus Vista"],
+        "use_global_filters": False,
+        "filters": {
+            "include_keywords": ["København", "Frederiksberg", "Valby", "Vanløse",
+                                 "Brønshøj", "Nordhavn", "Hellerup"],
+        },
+        "min_interval_hours": 0.1,      # every ~6 minutes
+    },
+
+    # Canvas Student (canvas-world.com, Greystar) — furnished studios.
+    # Getting your URL: the location page, e.g. .../copenhagen/nordhavn.
+    # One alert per bookable unit; price and size are its studio type's
+    # "from" values. The page shows at most 10 units per type, and its data
+    # looks refreshed about nightly, so an hourly check loses nothing.
+    "canvas": {
+        "enabled": False,
+        "url": "https://www.canvas-world.com/en/locations/denmark/copenhagen/nordhavn",
+        "use_global_filters": False,
+        "filters": {},
+        "min_interval_hours": 1,
+    },
+
     # Boligsiden (boligsiden.dk) — the FOR-SALE market: ejerlejligheder,
     # andelsboliger, houses, all of Denmark. Not renting? This is the one
     # source in the buy column; disable it if you only hunt rentals.

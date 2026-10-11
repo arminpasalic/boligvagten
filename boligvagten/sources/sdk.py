@@ -20,16 +20,14 @@ import json
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .. import __version__
-from .base import Listing, ParserHealthError, http_get, strip_html
+from .base import BOLIGVAGTEN_USER_AGENT, Listing, ParserHealthError, http_get, strip_html
 
 KEY = "sdk"
 LABEL = "s.dk (studiebolig)"
 SEARCH_URL = "https://mit.s.dk/api/v2/public/buildings/search/?page_size=100"
 DETAIL_URL = "https://mit.s.dk/api/v2/public/buildings/{id}/"
 BUILDING_URL = "https://mit.s.dk/studiebolig/building/{id}/"
-# Polite and identifiable: a once-a-day reader, not a browser.
-USER_AGENT = f"boligvagten/{__version__} (personal student-housing watcher)"
+USER_AGENT = BOLIGVAGTEN_USER_AGENT
 
 
 def _int(value):

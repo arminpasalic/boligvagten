@@ -213,6 +213,9 @@ affected site's attention.
 | `cej` | udlejning.cej.dk | rent | Zealand / Copenhagen | Remix data endpoint |
 | `kereby` | kereby.dk | rent | Copenhagen | public JSON API |
 | `cityapartment` | cityapartment.dk | rent | Copenhagen | server-rendered HTML |
+| `blaekhus` | blaekhus-living.dk | student/youth studios | Copenhagen (4 buildings) | JSON embedded in the page |
+| `heimstaden` | heimstaden.dk | rent (youth/student by default) | all of Denmark | JSON embedded in the page |
+| `canvas` | canvas-world.com | student studios | Copenhagen (Nordhavn) | Next.js page data |
 | `sdk` | mit.s.dk | student housing (new buildings, daily) | Copenhagen / Zealand | public JSON API |
 | `boligsiden` | boligsiden.dk | **sale** | all of Denmark | public JSON API |
 

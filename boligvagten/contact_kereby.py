@@ -37,7 +37,7 @@ def is_submit(request):
 
 def _is_listing_page(url):
     parts = urlsplit(url)
-    return parts.hostname == "kereby.dk" and re.fullmatch(r"/bolig/[a-z0-9-]+/?", parts.path or "")
+    return parts.hostname == "kereby.dk" and re.fullmatch(r"/(bolig|jorato-case)/[a-z0-9-]+/?", parts.path or "")
 
 
 def contact(page, listing_url, listing_id, cc, live, screenshot):
@@ -45,7 +45,7 @@ def contact(page, listing_url, listing_id, cc, live, screenshot):
     tenancy_id = listing_id.split(":", 1)[-1] if listing_id else None
     if not _is_listing_page(listing_url):
         if not tenancy_id:
-            return Result(NOT_SENT, "not a kereby.dk/bolig/... listing page")
+            return Result(NOT_SENT, "not a kereby.dk/jorato-case/... listing page")
         try:
             listing_url = kereby.resolve_page_url(tenancy_id)
         except Exception as e:

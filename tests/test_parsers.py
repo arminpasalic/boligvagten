@@ -8,8 +8,18 @@ from pathlib import Path
 
 import pytest
 
-from boligvagten.sources import boligportal, boligsiden, cej, cityapartment, kereby, sdk
-from boligvagten.sources.base import Listing, ParserHealthError
+from boligvagten.sources import (
+    blaekhus,
+    boligportal,
+    boligsiden,
+    canvas,
+    cej,
+    cityapartment,
+    heimstaden,
+    kereby,
+    sdk,
+)
+from boligvagten.sources.base import Listing, ParserHealthError, embedded_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -120,6 +130,47 @@ def test_boligportal_parse_tolerates_broken_store():
     assert [it.amenities for it in boligportal.parse(body)] == [frozenset(), frozenset()]
 
 
+def _card(listing_id):
+    return (f'<a class="x" href="/lejligheder/k%C3%B8benhavn/30m2-1-vaer-id-{listing_id}">'
+            f'<h3>1 vær. lejlighed på 30 m²</h3></a>')
+
+
+def test_boligportal_fetch_pages_back_by_offset(monkeypatch):
+    pages = {0: [1, 2], 2: [3, 4], 4: [5]}
+    requested = []
+
+    def fake_get(url, timeout=30):
+        requested.append(url)
+        offset = int(url.split("offset=")[1]) if "offset=" in url else 0
+        return "".join(_card(i) for i in pages[offset])
+
+    monkeypatch.setattr(boligportal, "http_get", fake_get)
+    url = "https://www.boligportal.dk/lejligheder/k%C3%B8benhavn/?max_monthly_rent=9000"
+    items = boligportal.fetch({"url": url, "max_pages": 2})
+    assert [it.id for it in items] == ["bp:1", "bp:2", "bp:3", "bp:4"]
+    assert requested == [url, url + "&offset=2"]  # page 1 is the URL as given
+
+
+def test_boligportal_fetch_stops_when_a_page_brings_nothing_new(monkeypatch):
+    calls = []
+
+    def fake_get(url, timeout=30):
+        calls.append(url)
+        return _card(1)  # the site keeps serving the same page
+
+    monkeypatch.setattr(boligportal, "http_get", fake_get)
+    items = boligportal.fetch({"url": "https://www.boligportal.dk/x/", "max_pages": 8})
+    assert [it.id for it in items] == ["bp:1"]
+    assert calls == ["https://www.boligportal.dk/x/", "https://www.boligportal.dk/x/?offset=1"]
+
+
+def test_boligportal_fetch_default_is_one_page(monkeypatch):
+    calls = []
+    monkeypatch.setattr(boligportal, "http_get", lambda url, timeout=30: calls.append(url) or _card(1))
+    boligportal.fetch({"url": "https://www.boligportal.dk/x/"})
+    assert len(calls) == 1
+
+
 def test_boligportal_parse_empty_page():
     assert boligportal.parse("<html><body>no listings</body></html>") == []
 
@@ -223,26 +274,35 @@ def test_kereby_parse_skips_nonresidential_and_unavailable():
 
 
 def test_kereby_links_point_to_the_published_kereby_dk_page():
-    slugs = [
+    pages = [
         "valby-langgade-36-5-tv-2500-valby",
         "sortedam-dossering-45-5-tv-2200-kobenhavn-n",
         "sortedam-dossering-45-5-tv-2200-kobenhavn-n",  # WP lists some pages twice
         "sortedam-dossering-4-1-th-2200-kobenhavn-n",   # shares a prefix, not a match
     ]
+    api = json.dumps([
+        {"slug": s, "link": f"https://kereby.dk/jorato-case/{s}/"} for s in pages
+    ])
+    slugs = kereby.page_slugs(get=lambda url: api)
     urls = {it.id: it.url for it in kereby.parse(load("kereby.json"), slugs=slugs)}
     assert urls["kereby:a8ead8ef-2720-4143-943f-f712cb755771"] == (
-        "https://kereby.dk/bolig/valby-langgade-36-5-tv-2500-valby/"
+        "https://kereby.dk/jorato-case/valby-langgade-36-5-tv-2500-valby/"
     )
     assert urls["kereby:140b3307-a27a-48f2-8a90-70d6205daa1e"] == (
-        "https://kereby.dk/bolig/sortedam-dossering-45-5-tv-2200-kobenhavn-n/"
+        "https://kereby.dk/jorato-case/sortedam-dossering-45-5-tv-2200-kobenhavn-n/"
     )
+
+
+def test_kereby_link_falls_back_to_the_slug_when_wp_omits_it():
+    slugs = kereby.page_slugs(get=lambda url: json.dumps([{"slug": "a-1-2500"}]))
+    assert slugs == {"a-1-2500": "https://kereby.dk/jorato-case/a-1-2500/"}
 
 
 def test_kereby_unpublished_page_links_to_the_overview_not_a_404():
     items = kereby.parse(load("kereby.json"), slugs=[])
     assert {it.url for it in items} == {kereby.INDEX_URL}
     assert kereby.slugify("Godthåbsvej 62B, parterre 2000") == "godthabsvej-62b-parterre-2000"
-    assert kereby.slugify("Fælledvej 23, 5. th 2200") == "faelledvej-23-5-th-2200"
+    assert kereby.slugify("Fælledvej 23, 5. th 2200") == "falledvej-23-5-th-2200"
 
 
 def test_kereby_parse_amenities():
@@ -370,3 +430,149 @@ def test_sdk_deep_check_fetches_only_when_asked_and_fails_open():
         raise OSError("offline")
 
     assert sdk.deep_check(listing, on, get=boom) is True
+
+
+# ---------------------------------------------------------------- shared helpers
+
+def test_embedded_json_reads_the_value_after_a_marker():
+    page = '<script>var a = 1; var _rentals = [{"x": "];"}];\nvar b = [];</script>'
+    assert embedded_json(page, "var _rentals =") == [{"x": "];"}]   # not fooled by "];"
+    assert embedded_json(page, "var missing =") is None
+
+
+def test_http_get_asks_for_gzip_and_unpacks_it(monkeypatch):
+    import gzip
+    import io
+
+    from boligvagten.sources import base
+
+    sent = {}
+
+    class Resp(io.BytesIO):
+        headers = {"Content-Encoding": "gzip"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(req, timeout):
+        sent.update(req.headers)
+        return Resp(gzip.compress("Ærø".encode()))
+
+    monkeypatch.setattr(base.urllib.request, "urlopen", urlopen)
+    assert base.http_get("https://x.dk", user_agent="ua/1") == "Ærø"
+    assert sent == {"User-agent": "ua/1", "Accept-encoding": "gzip"}
+
+
+# ---------------------------------------------------------------- Blækhus
+
+def test_blaekhus_parse_fields():
+    items = blaekhus.parse(load("blaekhus.html"))
+    assert [it.id for it in items] == ["blaekhus:651999", "blaekhus:649958", "blaekhus:649961"]
+    assert items[0] == Listing(
+        source="blaekhus",
+        id="blaekhus:651999",
+        name="Blækhus Frederiksberg",
+        address="Finsensvej 15, st. 2, Frederiksberg",
+        rooms=1,
+        size_m2=26,
+        price_dkk=8700,
+        url="https://blaekhus-living.dk/property/finsensvej-15-st-2/",
+    )
+
+
+def test_blaekhus_skips_reserved_and_sold_units():
+    page = load("blaekhus.html")
+    reserved = page.replace('{"name":"available","value":"Ledig"}',
+                            '{"name":"reserved","value":"Reserveret"}', 1)
+    assert [it.id for it in blaekhus.parse(reserved)] == ["blaekhus:649958", "blaekhus:649961"]
+    empty = page[:page.index("properties:")] + "properties: [],\n}));</script>"
+    assert blaekhus.parse(empty) == []      # a building with nothing free
+
+
+def test_blaekhus_parse_rejects_a_changed_page():
+    with pytest.raises(ParserHealthError, match="no 'properties'"):
+        blaekhus.parse("<html><body>Vi opdaterer siden</body></html>")
+
+
+def test_blaekhus_fetch_reads_each_building_once_identified(monkeypatch):
+    calls = []
+
+    def fake_get(url, timeout=30, user_agent=None):
+        calls.append((url, user_agent))
+        return load("blaekhus.html")
+
+    monkeypatch.setattr(blaekhus, "http_get", fake_get)
+    items = blaekhus.fetch({"urls": ["https://b.dk/frb/", "https://b.dk/valby/"]})
+    assert len(items) == 3                  # same units twice → deduped
+    assert [u for u, _ in calls] == ["https://b.dk/frb/", "https://b.dk/valby/"]
+    assert all(ua.startswith("boligvagten/") for _, ua in calls)
+
+
+# ---------------------------------------------------------------- Heimstaden
+
+def test_heimstaden_keeps_youth_and_student_units_by_default():
+    items = heimstaden.parse(load("heimstaden.html"), {})
+    assert [it.name for it in items] == ["C.F. Richs Vej", "Flintholm II",
+                                         items[2].name]      # + Hørparken, Kolding
+    assert items[0] == Listing(
+        source="heimstaden",
+        id="heimstaden:46893",
+        name="C.F. Richs Vej",
+        address="C.F. Richs Vej 105D, 1. 103, 2000 Frederiksberg",
+        rooms=1,
+        size_m2=26,
+        price_dkk=8700,
+        url="https://www.heimstaden.dk/lejebolig/cf-richs-vej-105d-1-103-2000-frederiksberg/",
+        # "Altan/terrasse: Ja, i nogle typer" is only some units → not claimed
+        amenities=frozenset({"elevator", "parking"}),
+    )
+    assert "Kolding" in items[2].address
+
+
+def test_heimstaden_unit_types_and_properties_options():
+    page = load("heimstaden.html")
+    assert len(heimstaden.parse(page, {"unit_types": []})) == 6         # every type
+    named = heimstaden.parse(page, {"unit_types": ["Ungdomsbolig"],
+                                    "properties": ["C.F. Richs Vej"]})
+    # the building's NPI flat comes along because the building is named
+    assert [it.id for it in named] == ["heimstaden:46893", "heimstaden:42206"]
+    reserved = page.replace('"Status":"Klar til udlejning"', '"Status":"Reserveret"', 1)
+    assert [it.id for it in heimstaden.parse(reserved, {"unit_types": ["Ungdomsbolig"]})] == []
+
+
+def test_heimstaden_parse_rejects_a_changed_page():
+    with pytest.raises(ParserHealthError, match="no '_rentals'"):
+        heimstaden.parse("<html><script>var rentals = [];</script></html>", {})
+
+
+# ---------------------------------------------------------------- Canvas
+
+def test_canvas_parse_fields():
+    items = canvas.parse(load("canvas.html"))
+    # Standard Studio lists 3 units, the sold-out type none, Superior Studio 1
+    # (that one sits in the page's second data chunk).
+    assert [it.id for it in items] == ["canvas:443470", "canvas:443507",
+                                       "canvas:443509", "canvas:443556"]
+    assert items[0] == Listing(
+        source="canvas",
+        id="canvas:443470",
+        name="Canvas Standard Studio (from 15.10.2026)",
+        address="Helsinkigade 27, 2150 Nordhavn",
+        rooms=1,
+        size_m2=26,          # "26-31" → smallest
+        price_dkk=8550,      # "000=8550"
+        url=("https://nordhavn-rentcafewebsiteuk.securerc.co.uk/onlineleasing/nordhavn/"
+             "oleapplication.aspx?stepname=RentalOptions&myOlePropertyId=186146"
+             "&FloorPlanID=1112675&UnitID=443470&header=1"),
+        amenities=frozenset({"furnished"}),
+    )
+    assert (items[3].name, items[3].price_dkk) == ("Canvas Superior Studio (from 01.11.2026)",
+                                                   10400)
+
+
+def test_canvas_parse_rejects_a_changed_page():
+    with pytest.raises(ParserHealthError, match="no floor plans"):
+        canvas.parse('<script>self.__next_f.push([1,"0:[]\\n"])</script>')

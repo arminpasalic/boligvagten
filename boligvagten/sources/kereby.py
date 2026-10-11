@@ -5,10 +5,11 @@ clean JSON, no HTML parsing. The API returns everything public; price/area
 preferences belong in the `filters` section of the source config.
 
 Listing pages live on kereby.dk under an address slug
-(/bolig/strandboulevarden-61-5-th-2100-kobenhavn/), not under the API id,
-and the slug can't be derived reliably ("København Ø" becomes "kobenhavn").
+(/jorato-case/strandboulevarden-61-5-th-2100-kobenhavn/), not under the API
+id, and the slug can't be derived reliably ("København Ø" becomes "kobenhavn").
 So fetch() also reads the site's list of published pages (WordPress REST)
-and matches each listing by street + postcode. A listing whose page isn't
+and matches each listing by street + postcode, linking to the page's own
+"link" (Kereby moved the pages from /bolig/ once already). A listing whose page isn't
 published yet links to the listings overview instead.
 """
 import json
@@ -24,8 +25,8 @@ DEFAULT_URL = (
     "?visibility=public&showAll=true&key=2gXoBtKvFMMgKJ1VBJ5G5pNr2GD"
 )
 INDEX_URL = "https://kereby.dk/bolig/"
-PAGE_URL = "https://kereby.dk/bolig/{slug}/"
-PAGES_API = "https://kereby.dk/wp-json/wp/v2/jorato-cases?per_page=100&page={page}&_fields=slug"
+PAGE_URL = "https://kereby.dk/jorato-case/{slug}/"
+PAGES_API = "https://kereby.dk/wp-json/wp/v2/jorato-cases?per_page=100&page={page}&_fields=slug,link"
 
 # Codes from tenancyFacilities / propertyFacilities / appliances → base.AMENITY_LABELS.
 AMENITIES = {
@@ -55,30 +56,38 @@ def _amenities(it):
 
 
 def slugify(text):
-    """WordPress-style slug: 'Nørrebrogade 156, st. tv 2200' -> 'norrebrogade-156-st-tv-2200'."""
-    text = text.lower().replace("ø", "o").replace("æ", "ae").replace("å", "a")
+    """WordPress-style slug: 'Nørrebrogade 156, st. tv 2200' -> 'norrebrogade-156-st-tv-2200'.
+
+    Kereby's slugs turn æ into a ('Fælledvej' -> 'falledvej'), not 'ae'.
+    """
+    text = text.lower().replace("ø", "o").replace("æ", "a").replace("å", "a")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
 
 
 def page_slugs(get=http_get, max_pages=5):
-    """Slugs of every listing page published on kereby.dk."""
-    slugs = []
+    """{slug: page URL} for every listing page published on kereby.dk."""
+    slugs = {}
     for page in range(1, max_pages + 1):
         batch = json.loads(get(PAGES_API.format(page=page)))
-        slugs.extend(item["slug"] for item in batch if item.get("slug"))
+        for item in batch:
+            if item.get("slug"):
+                slugs[item["slug"]] = item.get("link") or PAGE_URL.format(slug=item["slug"])
         if len(batch) < 100:
             break
     return slugs
 
 
 def page_url(address, slugs):
-    """The listing's page for an API address dict, or None if not published."""
+    """The listing's page for an API address dict, or None if not published.
+
+    `slugs` maps slug -> page URL, as page_slugs() returns.
+    """
     key = slugify(f"{address.get('street') or ''} {address.get('zipCode') or ''}")
     if not key or not slugs:
         return None
     matches = sorted({s for s in slugs if s == key or s.startswith(key + "-")})
-    return PAGE_URL.format(slug=matches[0]) if len(matches) == 1 else None
+    return slugs[matches[0]] if len(matches) == 1 else None
 
 
 def parse(body, conf=None, slugs=None):
